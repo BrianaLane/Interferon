@@ -19,7 +19,7 @@ import IFU_spectrum as ifu_spec
 
 class VP_fits_frame():
     def __init__(self, filename, fits_ext, fits_err_ext=3,
-                 cen_file='VP_config/IFUcen_VP_new_27m.csv', guide_obs=None):
+                 cen_file='/VP_config/IFUcen_VP_new_27m.csv', guide_obs=None):
 
         self.filename = filename
         self.fits_ext = fits_ext

@@ -7,6 +7,7 @@ Created on Fri Jul  2 15:28:36 2021
 """
 
 import os.path as op
+import sys
 import pandas as pd
 import numpy as np
 import glob
@@ -19,16 +20,22 @@ import VP_fits_frame as vpf
 
 class VP_run():
 
-    def __init__(self, data_path, fits_ext=0, guider_path=None, dith_file=None,
-                 cen_file='VP_config/IFUcen_VP_new_27m.csv',
+    def __init__(self, data_path, fits_ext=0, fits_err_ext=3, guider_path=None, 
+                 dith_file=None, cen_file='VP_config/IFUcen_VP_new_27m.csv',
                  guider_as_per_pix=0.51):
 
         self.data_path = data_path
-        self.cen_df = pd.read_csv(cen_file, skiprows=2)
+        self.dith_file = dith_file
+        self.cen_file = cen_file
+
         self.orig_ext = fits_ext
         self.fits_ext = fits_ext
+        self.orig_err_ext = fits_err_ext
+        self.fits_err_ext = fits_err_ext
 
         data_files = glob.glob(op.join(data_path, '*_*_multi.fits'))
+        if len(data_files)==0:
+            sys.exit('No data files found: check path')
         file_names = [f.split('/')[-1] for f in data_files]
         datetime_lis  = [dt.datetime.strptime(f.split('_')[-2],'%Y%m%dT%H%M%S') for f in file_names]
         obj_name = ['_'.join(f.split('_')[0:-2]) for f in file_names]
@@ -40,8 +47,8 @@ class VP_run():
                                      'is_dither': [False]*len(data_files),
                                      'dither_group_id': np.NaN})
 
-        if dith_file is None:
-            self.is_dither_obs = False
+        self.dither_obs = False
+        if self.dith_file is None:
             print('No Dither File Found: treating each file as single dither observation')
         else:
             dither_inds = [d for d in range(len(self.data_df)) if 'dither' in self.data_df.iloc[d]['filename']]
@@ -49,14 +56,13 @@ class VP_run():
                 print('No Dither Found: treating each file as single dither observation')
             else:
                 self.dither_obs = True
-                self.dith_df = pd.read_csv(dith_file, skiprows=2)
                 self.data_df.at[dither_inds, 'is_dither'] = True
 
                 dith_num_lis = [i.split('_')[-1] for i in self.data_df.iloc[dither_inds]['object']]
                 dith_obj_lis = ['_'.join(i.split('_')[0:-2]) for i in self.data_df.iloc[dither_inds]['object']]
                 self.data_df.at[dither_inds, 'dith_num'] = dith_num_lis
                 self.data_df.at[dither_inds, 'object'] = dith_obj_lis
-            
+   
         self.guider_path = guider_path
         self.guider_obs = None
 
@@ -122,7 +128,8 @@ class VP_run():
                 
     def obs_guider(self):
         if self.guider_path is not None:
-            guid = go.guider_observations(self.guider_path)
+            guid = go.guider_observations(self.guider_path,
+                                          guider_as_per_pix=guider_as_per_pix)
             self.guider_obs = guid
         else:
             print('NO GUIDER PATH PROVIDED')
@@ -140,9 +147,13 @@ class VP_run():
         for i in range(len(dith_grp_df)):
             VP_file = dith_grp_df.iloc[i].filename
             fits_ex = vpf.VP_fits_frame(VP_file, self.fits_ext,
+                                        fits_err_ext=self.fits_err_ext,
+                                        cen_file=self.cenfile,
                                         guide_obs=self.guider_obs)
+
             dith_obj_lis.append(fits_ex)
-        dith = do.dither_observation(dith_obj_lis, dither_group_id=dith_grp_id)
+        dith = do.dither_observation(dith_obj_lis, dither_group_id=dith_grp_id,
+                                     dith_file=self.dith_file)
 
         if norm:
             dith.normalize_dithers(self.guider_obs)
@@ -158,5 +169,5 @@ class VP_run():
         dith_group_lis = self.data_df['dither_group_id'].unique()
         for g in dith_group_lis:
             dith = self.dither_object(g, norm=True)
-            data_cube(dith)
-            
+            self.build_data_cube(dith)
+

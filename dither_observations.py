@@ -8,8 +8,6 @@ Created on Fri Jul  2 15:28:36 2021
 
 import pandas as pd
 import numpy as np
-from datetime import datetime
-import warnings
 
 from astropy import units as u
 from astropy.io import fits
@@ -55,7 +53,7 @@ class dither_observation():
 
         self.field_RA = None
         self.field_DEC = None
-        
+
         print('BUILD dither observation: [DITHOBS:'+str(self.dither_group_id)+']')
 
     def normalize_dithers(self, guide_obs, star_thres=10., num_bright_stars=10,
