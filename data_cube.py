@@ -97,10 +97,13 @@ class data_cube():
     def build_sensitiviy_curve(self):
         # find the center of mass of star
         # call extract spectrum to build spectrum of star
-        # could decide on ap_rad by fitting profile to image slice 
-        # find lit spectrum to compare 
-        # divide to get sensitivty curve 
-        # correct for airmass 
+        # could decide on ap_rad by fitting profile to image slice
+        # find lit spectrum to compare
+        # divide to get sensitivty curve
+        # correct for airmass
+        return None
+
+    def flux_calibrate(self):
         return None
 
     def regrid_cube(self, apert_rad):
