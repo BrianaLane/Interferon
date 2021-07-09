@@ -11,8 +11,10 @@ import pandas as pd
 import numpy as np
 import glob
 import datetime as dt
-import matplotlib.pyplot as plt
-import warnings
+
+import guider_observations as go
+import dither_observations as do
+import VP_fits_frame as vpf
 
 
 class auto_VP_run():
@@ -24,6 +26,7 @@ class auto_VP_run():
         self.data_path = data_path
         self.cen_df = pd.read_csv(cen_file, skiprows=2)
         self.orig_ext = fits_ext
+        self.fits_ext = fits_ext
 
         data_files = glob.glob(op.join(data_path, '*_*_multi.fits'))
         file_names = [f.split('/')[-1] for f in data_files]
@@ -35,17 +38,15 @@ class auto_VP_run():
                                      'obs_datetime': datetime_lis,
                                      'orig_fits_ext': self.orig_ext,
                                      'is_dither': [False]*len(data_files),
-                                     'num_obj_obs': np.NaN})
+                                     'dither_group_id': np.NaN})
 
         if dith_file is None:
             self.is_dither_obs = False
-            print('No Dither File Found: treating each file as single \
-                  dither observation')
+            print('No Dither File Found: treating each file as single dither observation')
         else:
             dither_inds = [d for d in range(len(self.data_df)) if 'dither' in self.data_df.iloc[d]['filename']]
             if len(dither_inds) == 0:
-                print('No Dither Found: treating each file as single dither \
-                      observation')
+                print('No Dither Found: treating each file as single dither observation')
             else:
                 self.dither_obs = True
                 self.dith_df = pd.read_csv(dith_file, skiprows=2)
@@ -55,21 +56,18 @@ class auto_VP_run():
                 dith_obj_lis = ['_'.join(i.split('_')[0:-2]) for i in self.data_df.iloc[dither_inds]['object']]
                 self.data_df.at[dither_inds, 'dith_num'] = dith_num_lis
                 self.data_df.at[dither_inds, 'object'] = dith_obj_lis
+            
+        self.guider_path = guider_path
+        self.guider_obs = None
 
-        if guider_path is None:
-            self.is_guider_obs = False
-        else:
-            self.is_guider_obs = True
-
-        self.object_ID_file = op.join(self.data_path, 'object_ID_list.csv')
-        self.object_ID_df = None
+        # self.object_ID_file = op.join(self.data_path, 'object_ID_list.csv')
+        # self.object_ID_df = None
 
         self.match_dither = False
-        self.match_guider = False
 
     # find duplicate observations of the same object. mark them
     # with different indicators in data_df num_obj_obs column
-    def auto_build_dither_groups(self):
+    def build_dither_groups(self):
 
         if self.dither_obs:
 
@@ -95,14 +93,14 @@ class auto_VP_run():
                     # assigned different obs number
                     # sorting by observation time will group dithers taken at
                     # same time with same obs number
-                    self.data_df.at[dith_num_inds, 'num_obj_obs'] = np.arange(len(dith_num_inds))+obs_ct
+                    self.data_df.at[dith_num_inds, 'dither_group_id'] = np.arange(len(dith_num_inds))+obs_ct
                     num_dup_lis.append(len(dith_num_inds))
                 obs_ct = obs_ct+np.max(num_dup_lis)
 
             print('   Found', obs_ct, 'dither groups')
 
         else:
-            self.data_df['num_obj_obs'] = np.arange(len(self.data_df))+1
+            self.data_df['dither_group_id'] = np.arange(len(self.data_df))+1
 
         self.match_dither = True
 
@@ -121,6 +119,44 @@ class auto_VP_run():
             else:
                 self.data_df.drop(data_obj_inds, inplace=True)
                 self.data_df.reset_index(drop=True, inplace=True)
+                
+    def obs_guider(self):
+        if self.guider_path is not None:
+            guid = go.guider_observations(self.guider_path)
+            self.guider_obs = guid
+        else:
+            print('NO GUIDER PATH PROVIDED')
 
-    def normalize_all_dithers(self):
-        return None
+    def dither_object(self, dith_grp_id, norm=True):
+
+        if not self.match_dither:
+            self.build_dither_groups()
+
+        if not isinstance(self.guider_obs, go.guider_observations):
+            self.obs_guider()
+
+        dith_grp_df = self.data_df[self.data_df['dither_group_id'] == dith_grp_id]
+        dith_obj_lis = []
+        for i in range(len(dith_grp_df)):
+            VP_file = dith_grp_df.iloc[i].filename
+            fits_ex = vpf.VP_fits_frame(VP_file, self.fits_ext,
+                                        guide_obs=self.guider_obs)
+            dith_obj_lis.append(fits_ex)
+        dith = do.dither_observation(dith_obj_lis, dither_group_id=dith_grp_id)
+
+        if norm:
+            dith.normalize_dithers(self.guider_obs)
+            self.fits_ext = dith.VP_frames[0].fits_ext
+
+        return dith
+
+    def build_data_cube(self, dith):
+        dith.write_data_cube()
+
+    def run_all_dithers(self):
+
+        dith_group_lis = self.data_df['dither_group_id'].unique()
+        for g in dith_group_lis:
+            dith = self.dither_object(g, norm=True)
+            data_cube(dith)
+            
