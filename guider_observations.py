@@ -34,6 +34,8 @@ from photutils import CircularAperture, aperture_photometry, CircularAnnulus
 
 class guider_observations():
     def __init__(self, guider_path, guider_as_per_pix=0.51):
+        
+        print('BUILD guider observation: [GUIDER]')
 
         self.guider_path = guider_path
         self.guider_ps = guider_as_per_pix
