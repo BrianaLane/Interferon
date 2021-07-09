@@ -17,7 +17,7 @@ import dither_observations as do
 import VP_fits_frame as vpf
 
 
-class auto_VP_run():
+class VP_run():
 
     def __init__(self, data_path, fits_ext=0, guider_path=None, dith_file=None,
                  cen_file='VP_config/IFUcen_VP_new_27m.csv',

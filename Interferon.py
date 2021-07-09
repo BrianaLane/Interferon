@@ -15,7 +15,7 @@ Created on Fri Jul  2 15:28:36 2021
 #import dither_observations as do
 #import VP_fits_frame as vpf
 
-import auto_VP_run as auto_VP
+from auto_VP_run import VP_run
 
 data_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/20210411/redux'
 guider_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/20210411/guider'
@@ -40,14 +40,14 @@ cen_file = 'VP_config/IFUcen_VP_new_27m.csv'
 # dith.build_master_fiber_files()
 #dith.write_data_cube()
 
-vp_run = auto_VP.auto_VP_run(data_path, fits_ext=0,
+vp1 = VP_run(data_path, fits_ext=0,
                              guider_path=guider_path, dith_file=dith_file,
                              cen_file=cen_file, guider_as_per_pix=0.51)
 
-dith = vp_run.dither_object(1, norm=False)
+dith = vp1.dither_object(1, norm=False)
 
-dith2 = vp_run.dither_object(2, norm=False)
+dith2 = vp1.dither_object(2, norm=False)
 
 
 # %%
-vp_run.build_data_cube(dith)
+vp1.build_data_cube(dith)

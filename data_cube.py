@@ -12,6 +12,8 @@ from astropy.io import fits
 from astropy.wcs import WCS
 # from astropy.coordinates import Angle
 
+from collapsed_image import cube_image
+
 
 class data_cube():
 
@@ -39,27 +41,69 @@ class data_cube():
         else:
             self.cube_err = None
 
-    def collapse_frame(self, wave_range=5007):
+    def collapse_frame(self, wave_range=None, err=False):
+
         if isinstance(wave_range, int) or isinstance(wave_range, float):
             wave_inds = np.where(self.wave == wave_range)
+
         elif isinstance(wave_range, tuple):
             wave_inds = np.where((self.wave > np.min(wave_range)) &
                                  (self.wave < np.max(wave_range)))
-        col_frame = self.cube[wave_inds]
-        col_err_frame = self.cube_err[wave_inds]
 
-        return col_frame, col_err_frame
-    
-    def plot_frame(self, col_frame, name='', save=False):
-        fig, ax = plt.subplots(1, 1, figsize=(10,10))
-        ax.imshow(col_frame, origin='lower')
-        ax.set_xlabel('Right Ascension (J'+str(self.equinox)+')')
-        ax.set_ylabel('Declination (J'+str(self.equinox)+')')
-        
-        if save:
-            plt.savefig(self.filename.split('.fits')[0]+'_collapse_im_'+name+'_.png')
-            
-        plt.show()
-        
-    def save_frame(self, col_frame):
-        hdu_new = fits.PrimaryHDU(fits_cube, header=wcs_hdr)
+        else:
+            #if no wave range provide collapse entire cube into 2d frame
+            wave_inds = np.arange(len(self.wave))
+
+        if not err:
+            col_frame = self.cube[wave_inds]
+
+        else:
+            if isinstance(self.cube_err, np.array):
+                col_frame = self.cube_err[wave_inds]
+            else:
+                print('NO ERROR CUBE PROVIDED')
+                return None
+
+        return col_frame
+
+    def collapse_spectrum(self, err=False):
+
+        if not err:
+            sum_spec = np.sum(self.cube, axis=0)
+
+        else:
+            if isinstance(self.cube_err, np.array):
+                sum_spec = np.sum(self.cube_err, axis=0)
+            else:
+                print('NO ERROR CUBE PROVIDED')
+                return None
+
+        return sum_spec
+
+    def extract_spectrum(self, RA, DEC, apert_rad, err=False):
+
+        if not err:
+            sum_spec = np.sum(self.cube, axis=0)
+
+        else:
+            if isinstance(self.cube_err, np.array):
+                sum_spec = np.sum(self.cube_err, axis=0)
+            else:
+                print('NO ERROR CUBE PROVIDED')
+                return None
+
+        return None
+
+    def build_sensitiviy_curve(self):
+        # find the center of mass of star
+        # call extract spectrum to build spectrum of star
+        # could decide on ap_rad by fitting profile to image slice 
+        # find lit spectrum to compare 
+        # divide to get sensitivty curve 
+        # correct for airmass 
+        return None
+
+    def regrid_cube(self, apert_rad):
+        # may not make sense here b/c would need master fiber data
+        # could write this into the object
+        return None
