@@ -12,12 +12,9 @@ import datetime as dt
 
 from astropy import coordinates as coords
 from astropy.io import fits
-from astropy import units as u
-from astropy.coordinates import Angle
 
 import guider_observations as go
 import IFU_spectrum as ifu_spec
-import interpolate_IFU
 
 
 class VP_fits_frame():
@@ -29,16 +26,16 @@ class VP_fits_frame():
         self.fits_err_ext = fits_err_ext
         self.fib_df = pd.read_csv(cen_file, skiprows=2)
 
-        fits_name = self.filename.split('/')[-1]
-        self.obs_datetime = dt.datetime.strptime(fits_name.split('_')[-2],
+        self.fits_name = self.filename.split('/')[-1]
+        self.obs_datetime = dt.datetime.strptime(self.fits_name.split('_')[-2],
                                                  '%Y%m%dT%H%M%S')
 
-        if fits_name.split('_')[-4] == 'dither':
-            self.dith_num = int(fits_name.split('_')[-3])
-            self.object = '_'.join(fits_name.split('_')[0:-4])
+        if self.fits_name.split('_')[-4] == 'dither':
+            self.dith_num = int(self.fits_name.split('_')[-3])
+            self.object = '_'.join(self.fits_name.split('_')[0:-4])
         else:
             self.dith_num = None
-            self.object = '_'.join(fits_name.split('_')[0:-2])
+            self.object = '_'.join(self.fits_name.split('_')[0:-2])
 
         self.seeing = 999
         self.dithnorm = 1.0
@@ -53,13 +50,17 @@ class VP_fits_frame():
 
         self.dither_group_id = None
 
-        self.frame_cube = None
-        self.frame_err_cube = None
+        print('BUILD VP science frame [' + str(self.fits_name) +
+              '][EXT:' + str(self.fits_ext) + ']')
 
     def build_hdr_info(self):
         with fits.open(self.filename) as hdulis:
-            self.dat = hdulis[self.fits_ext].data
-            self.dat_err = hdulis[self.fits_err_ext].data
+            try:
+                self.dat = hdulis[self.fits_ext].data
+                self.dat_err = hdulis[self.fits_err_ext].data
+            except KeyError:
+                print(self.fits_ext, 'does not exist')
+                
             self.hdr = hdulis[self.fits_ext].header
 
             if 'SEEING' not in self.hdr:
@@ -97,7 +98,9 @@ class VP_fits_frame():
             self.fib_df['dith_num'] = self.dith_num
 
     def match_guider_frames(self, guide_obs):
+        
         if isinstance(guide_obs, go.guider_observations):
+            
             guider_df = guide_obs.guider_df
 
             d_dt = self.obs_datetime
@@ -120,6 +123,9 @@ class VP_fits_frame():
     # new_ext_name (int/str): name of new fits extension
     # hdr_comment (str): comment to add to header of new extension
     def build_new_extension(self, new_ext_name, hdr_comment):
+
+        print('BUILDING new fits extension: [' + str(self.fits_name) +
+              '][EXT:' + str(self.fits_ext) + ']' )
 
         hdulis = fits.open(self.filename, lazy_load_hdus=False)
 
@@ -168,61 +174,6 @@ class VP_fits_frame():
         else:
             print('Must provide sky model with shape:'
                   + str(np.shape(self.dat)[0]))
-     
-    def build_data_cube(self, grid=(0, 0, 0, 0)):
-
-        fiberd_as = self.cen_df.iloc[0]['fiberd']  # in arcseconds
-        fibersep_as = self.cen_df.iloc[0]['fibersep']  # in arcseconds
-        # convert all arcsecond units to degrees
-        fiberd = Angle(fiberd_as*u.arcsecond).degree
-        fibersep = Angle(fibersep_as*u.arcsecond).degree
-
-        fib_RA = self.master_fib_df['RA'].values
-        fib_DEC = self.master_fib_df['DEC'].values
-
-        regrid_size = (fiberd+fibersep)/2.0
-        kern_sig = fiberd+fibersep
-        max_radius = (fiberd+fibersep)*5.0
-        interp_class = interpolate_IFU.fibers_to_grid(fib_RA, fib_DEC, fiberd,
-                                                      regrid_size, max_radius,
-                                                      kern_sig)
-
-        if len(set(list(grid))) == 1:
-            xmin = self.fib_df['RA'].min()
-            xmax = self.fib_df['RA'].max()
-            ymin = self.fib_df['DEC'].min()
-            ymax = self.fib_df['DEC'].max()
-            grid = (xmin, xmax, ymin, ymax)
-
-        x_grid, y_grid = interp_class.build_new_grid(grid=grid)
-
-        self.master_fib_df['fib_flux'] = np.ones(len(self.fib_df))
-        self.master_fib_df['fib_flux_err'] = np.zeros(len(self.fib_df))
-
-        wave_frame_lis = []
-        wave_frame_err_lis = []
-        for i in range(len(self.wave)):
-            self.fib_df['fib_flux'] = self.dat[:, i]
-            self.fib_df['fib_flux_err'] = self.dat_err[:, i]
-
-            wave_frame, wave_err_frame = interp_class.shepards_kernal()
-            wave_frame_lis.append(wave_frame)
-            wave_frame_err_lis.append(wave_err_frame)
-
-        self.frame_cube = np.dstack(wave_frame_lis)
-        self.frame_err_cube = np.dstack(wave_frame_err_lis)
-
-    def save_data_cube(self, outname=None):
-
-        hdu_new = fits.PrimaryHDU(self.data_cube)
-        hdr_new = hdu_new[0].header
-        hdr_new['OBJECT'] = self.hdr['OBJECT']
-
-        if outname is None:
-            outname = self.filename[0:-11]+'data_cube.fits'
-
-        hdu_new.writeto('outname')
-        hdu_new.close()
 
     # fib_ind (list/array)(optional, default will sum all fibers):
     # list of fiber indices to sum and plot

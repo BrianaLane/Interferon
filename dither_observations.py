@@ -8,6 +8,7 @@ Created on Fri Jul  2 15:28:36 2021
 
 import pandas as pd
 import numpy as np
+from datetime import datetime
 import warnings
 
 from astropy import units as u
@@ -22,7 +23,7 @@ import VP_fits_frame as vpf
 
 class dither_observation():
 
-    def __init__(self, VP_frames, dither_group_id=None,
+    def __init__(self, VP_frames, dither_group_id=0,
                  dith_file='VP_config/dith_vp_6subdither.csv'):
 
         self.VP_frames = VP_frames
@@ -42,23 +43,32 @@ class dither_observation():
         self.dith_df = pd.read_csv(dith_file, skiprows=2)
 
         self.wave = None
+        self.wave_start = None
+        self.wave_delta = None
         self.master_spec = None
         self.master_err_spec = None
         self.master_fib_df = None
 
         self.data_cube = None
         self.data_err_cube = None
+        self.cube_wcs = None
+
+        self.field_RA = None
+        self.field_DEC = None
+        
+        print('BUILD dither observation: [DITHOBS:'+str(self.dither_group_id)+']')
 
     def normalize_dithers(self, guide_obs, star_thres=10., num_bright_stars=10,
                           star_fwhm=8.0, fwhm_lim=(0.5, 10), mag_lim=10):
 
         if isinstance(guide_obs, go.guider_observations):
+            
+            print(' [DITHOBS:'+str(self.dither_group_id)+'] build normalized dithers')
 
             # check if matched each fits image has matched guider frames
             obs_guide_lis = []
             for f in range(len(self.VP_frames)):
                 if self.VP_frames[f].guide_match is None:
-                    print('MATCHING GUDIE FRAMES')
                     self.VP_frames[f].match_guider_frames(guide_obs)
                 obs_guide_lis.append(self.VP_frames[f].guider_ind)
             obs_guide_lis = np.hstack(obs_guide_lis)
@@ -135,10 +145,14 @@ class dither_observation():
             return None
 
     def build_common_wavesol(self):
+        
+        print(' [DITHOBS:'+str(self.dither_group_id)+'] build common wavelength solution')
 
         # establish the wavelength solution of the first dither for all dithers
         dith1_obj = self.VP_frames[np.where(self.dith_order_lis == 1)[0][0]]
         self.wave = dith1_obj.wave
+        self.wave_start = dith1_obj.wave_start
+        self.wave_delta = dith1_obj.wave_delta
 
         for i in range(len(self.VP_frames)):
             frame_wave = self.VP_frames[i].wave
@@ -170,10 +184,12 @@ class dither_observation():
 
         if not isinstance(self.wave, np.ndarray):
             self.build_common_wavesol()
+            
+        print(' [DITHOBS:'+str(self.dither_group_id)+'] build master dither set files')
 
         dith1_obj = self.VP_frames[np.where(self.dith_order_lis == 1)[0][0]]
-        field_RA = dith1_obj.RA
-        field_DEC = dith1_obj.DEC
+        self.field_RA = dith1_obj.RA
+        self.field_DEC = dith1_obj.DEC
 
         dat_lis = []
         err_lis = []
@@ -182,16 +198,24 @@ class dither_observation():
         for d in self.dith_order_lis:
             dith_obj = self.VP_frames[np.where(self.dith_order_lis == d)[0][0]]
 
-            RA_dith_shift_as = self.dith_df[self.dith_df['dith_num'] == d]['RA_shift'].values[0]
-            DEC_dith_shift_as = self.dith_df[self.dith_df['dith_num'] == d]['DEC_shift'].values[0]
+            RA_dith_shift_as = self.dith_df[self.dith_df['dith_num'] == d][
+                    'RA_shift'].values[0]
+
+            DEC_dith_shift_as = self.dith_df[self.dith_df['dith_num'] == d][
+                    'DEC_shift'].values[0]
             RA_dith_shift_deg = RA_dith_shift_as/3600
             DEC_dith_shift_deg = DEC_dith_shift_as/3600
 
             dat_lis.append(dith_obj.dat)
             err_lis.append(dith_obj.dat_err)
 
-            dith_obj.fib_df['RA'] = field_RA+RA_dith_shift_deg
-            dith_obj.fib_df['DEC'] = field_DEC+DEC_dith_shift_deg
+            cen_ra_shift = dith_obj.fib_df['RA_offset'].values/3600
+            cen_dec_shift = dith_obj.fib_df['DEC_offset'].values/3600
+
+            dith_obj.fib_df['RA'] = self.field_RA + cen_ra_shift + \
+                RA_dith_shift_deg
+            dith_obj.fib_df['DEC'] = self.field_DEC + cen_dec_shift + \
+                DEC_dith_shift_deg
             fib_df_lis.append(dith_obj.fib_df)
 
         self.master_spec = np.vstack(dat_lis)
@@ -200,25 +224,14 @@ class dither_observation():
         fib_df = pd.concat(fib_df_lis)
         self.master_fib_df = fib_df.reset_index(drop=True)
 
-        # shift fiber RA,DEC by cen file offsets
-        for i in range(len(self.cen_df)):
-            fib_id = self.cen_df.iloc[i]['fib_id']
-            RA_fib_shift_as = self.cen_df.iloc[i]['RA']
-            DEC_fib_shift_as = self.cen_df.iloc[i]['DEC']
-            RA_fib_shift_deg = RA_fib_shift_as/3600
-            DEC_fib_shift_deg = DEC_fib_shift_as/3600
-
-            fib_inds = self.master_fib_df[self.master_fib_df['fib_id']==fib_id].index.values
-
-            self.master_fib_df.at[fib_inds, 'RA'] = self.master_fib_df.iloc[fib_inds]['RA'] + RA_fib_shift_deg
-            self.master_fib_df.at[fib_inds, 'DEC'] = self.master_fib_df.iloc[fib_inds]['DEC'] + DEC_fib_shift_deg
-
-    def build_data_cube(self, grid=(0, 0, 0, 0)):
+    def make_data_cube(self, grid=(0, 0, 0, 0)):
 
         if not isinstance(self.master_spec, np.ndarray):
             self.build_master_fiber_files()
 
-        fiberd_as = self.cen_df.iloc[0]['fiberd']  # in arcseconds
+        print(' [DITHOBS:'+str(self.dither_group_id)+'] build data cube and error cube')
+
+        fiberd_as = self.VP_frames[0].fib_df.iloc[0]['fiberd']  # in arcseconds
         # convert all arcsecond units to degrees
         fiberd = Angle(fiberd_as*u.arcsecond).degree
 
@@ -228,10 +241,14 @@ class dither_observation():
         regrid_size = fiberd/2.0
         kern_sig = fiberd
         max_radius = fiberd*5.0
-        interp_class = interpolate_IFU.fibers_to_grid(fib_RA, fib_DEC, fiberd,
-                                                      regrid_size, max_radius,
-                                                      kern_sig)
+        self.interp_class = interpolate_IFU.fibers_to_grid(fib_RA,
+                                                           fib_DEC, fiberd,
+                                                           regrid_size,
+                                                           max_radius,
+                                                           kern_sig)
 
+        # if all input grid values are the same then assume
+        # no grid is defined and use coordinate list to define new grid
         if len(set(list(grid))) == 1:
             xmin = self.master_fib_df['RA'].min()
             xmax = self.master_fib_df['RA'].max()
@@ -239,38 +256,90 @@ class dither_observation():
             ymax = self.master_fib_df['DEC'].max()
             grid = (xmin, xmax, ymin, ymax)
 
-        x_grid, y_grid = interp_class.build_new_grid(grid=grid)
-
-        self.master_fib_df['fib_flux'] = np.ones(len(self.master_fib_df))
-        self.master_fib_df['fib_flux_err'] = np.zeros(len(self.master_fib_df))
+        x_grid, y_grid = self.interp_class.build_new_grid(grid=grid)
 
         wave_frame_lis = []
         wave_frame_err_lis = []
         for i in range(len(self.wave)):
-            self.master_fib_df['fib_flux'] = self.master_spec[:, i]
-            self.master_fib_df['fib_flux_err'] = self.master_err_spec[:, i]
-
-            wave_frame, wave_err_frame = interp_class.shepards_kernal()
+            wave_frame, wave_err_frame = self.interp_class.shepards_kernal(
+                    self.master_spec[:, i], self.master_err_spec[:, i])
             wave_frame_lis.append(wave_frame)
             wave_frame_err_lis.append(wave_err_frame)
 
         self.data_cube = np.dstack(wave_frame_lis)
         self.data_err_cube = np.dstack(wave_frame_err_lis)
 
-    def save_data_cube(self, outname=None):
+        wave_wcs_dict = {'CUNIT3': 'Angstrom',
+                         'CTYPE3': 'Angstrom',
+                         'CRPIX3': 1,
+                         'CRVAL3': self.wave_start,
+                         'CDELT3': self.wave_delta}
+
+        self.cube_wcs = self.interp_class.build_wcs(wave_dict=wave_wcs_dict)
+
+    def write_data_cube(self):
+
+        if not isinstance(self.data_cube, np.ndarray):
+            self.make_data_cube()
+
+        print(' [DITHOBS:'+str(self.dither_group_id)+'] build fits cube files')
+
         # find mean of header values for combined dithers
-        cube_hdr = self.VP_frames[0].hdr
-        hdu_new = fits.PrimaryHDU(self.data_cube)
-        if outname is None:
-            if self.dither_group_id is not None:
-                outname = self.VP_frames[0].filename.split('.')[-2]+'_data_cube_'+str(int(self.dither_group_id))+'.fits'
-            else:
-                dith_group_id = 1.0
-                outname = self.VP_frames[0].filename.split('.')[-2]+'_data_cube_'+str(1)+'.fits'
-        try:
-            hdu_new.writeto(outname)
-        except:
-            print('Invalid save path')
+        wcs_hdr = self.cube_wcs.to_header()
+
+        dith1_obj = self.VP_frames[np.where(self.dith_order_lis == 1)[0][0]]
+        dith1_hdr = dith1_obj.hdr
+
+        wcs_hdr['NUMDITH'] = (len(self.VP_frames),
+                              'Number of combined dithers')
+        wcs_hdr['REGRID'] = (self.interp_class.regrid_size,
+                             'Regrid size set for interpolation (deg)')
+        wcs_hdr['KERNSIG'] = (self.interp_class.kern_sig,
+                              'Sigma for gaussian interpolation kernal (deg)')
+        wcs_hdr['MAXRAD'] = (self.interp_class.max_dist,
+                             'Max radius pixel center (deg)')
+        wcs_hdr['RA'] = (self.field_RA, 'RA of object for dither 1 (deg)')
+        wcs_hdr['DEC'] = (self.field_DEC, 'DEC of object for dither 1 (deg)')
+        wcs_hdr['EQUINOX'] = dith1_hdr['EQUINOX']
+        wcs_hdr['OBJECT'] = dith1_obj.object
+        wcs_hdr['DATE-OBS'] = (dith1_obj.obs_datetime.strftime('%Y%m%dT%H%M%S'), 'Obs date for dither 1')
+        wcs_hdr['EXPTIME'] = (dith1_obj.exptime,
+                              'Average dither exposure time')
+        wcs_hdr['FILEXT'] = (dith1_obj.fits_ext, 'fits extention used')
+
+        for d in self.dith_order_lis:
+            dith_obj = self.VP_frames[np.where(self.dith_order_lis == d)[0][0]]
+            wcs_hdr['AIRMAS'+str(int(d))] = dith_obj.airmass
+            wcs_hdr['DITHNOR'+str(int(d))] = dith_obj.dithnorm
+            wcs_hdr['SEEING'+str(int(d))] = dith_obj.seeing
+            wcs_hdr['DITHFIL'+str(int(d))] = dith_obj.filename
+            wcs_hdr['FILEXT'+str(int(d))] = dith_obj.fits_ext
+
+        wcs_hdr['COMMENT'] = 'DATA CUBE built from DITHFIL# files'
+        wcs_hdr['COMMENT'] = 'using the fits extension FILEXT'
+
+        self.wcs_hdr = wcs_hdr
+
+        # reshape data cube so dimenstions read correctly by fits
+        # fits uses Fortran convention (column-major order) (z, y, x)
+        # python uses (y, x, z) so need to swap them
+        fits_cube = np.swapaxes(np.swapaxes(self.data_cube, 2, 0), 1, 2)
+        hdu_new = fits.PrimaryHDU(fits_cube, header=wcs_hdr)
+
+        outname = self.VP_frames[0].filename.split('.')[-2] + \
+            '_data_cube_'+str(int(self.dither_group_id))+'.fits'
+
+        hdu_new.writeto(outname, overwrite=True)
+
+        hdu_err = fits.open(outname)
+        hdu_err[0].header['FILEXT'] = dith1_obj.fits_err_ext
+        hdu_err[0].header['COMMENT'] = 'ERROR DATA CUBE built from DITHFIL#'
+        hdu_err[0].header['COMMENT'] = 'files using the fits error extension FILEXT'
+        fits_cube_err = np.swapaxes(np.swapaxes(self.data_err_cube, 2, 0), 1, 2)
+        hdu_err[0].data = fits_cube_err
+        outname_err = outname.split('.fits')[0]+'_err.fits'
+        hdu_err.writeto(outname_err, overwrite=True)
+        hdu_err.close()
 
     # fib_ind (list/array)(optional,
     # default will sum all fibers): list of fiber indices to sum and plot
