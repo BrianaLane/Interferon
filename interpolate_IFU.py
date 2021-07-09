@@ -6,12 +6,11 @@ Created on Fri Jul  2 15:28:36 2021
 @author: Briana
 """
 
-import os.path as op
 import numpy as np
 import numpy.ma as ma
 import math
 from astropy.io import fits
-
+from astropy.wcs import WCS
 import matplotlib.pyplot as plt
 
 # need to give it dataframe containing fiber information for one field with
@@ -59,7 +58,7 @@ class fibers_to_grid():
             xmin, xmax, ymin, ymax = grid
             if len(set(list(grid))) == 1:
                 # min and max x,y values in the dither
-                print('finding grid')
+                print('BUILDING grid from fiber coodinates')
                 xmin, xmax = (self.fib_ra.min(), self.fib_ra.max())
                 ymin, ymax = (self.fib_dec.min(), self.fib_dec.max())
         except:
@@ -92,13 +91,13 @@ class fibers_to_grid():
         # build new grid
         x_range = xmin+(np.arange(self.nx)+0.5)*self.regrid_x
         y_range = ymin+(np.arange(self.ny)+0.5)*self.regrid_y
+
         self.x_grid, self.y_grid = np.meshgrid(x_range, y_range)
 
         return self.x_grid, self.y_grid
 
     def shepards_kernal(self, fib_flux, fib_flux_err):
         if self.x_grid is None:
-            print('Building grid from fiber coordinates')
             self.build_new_grid()
 
         self.fib_flux = fib_flux
@@ -158,6 +157,28 @@ class fibers_to_grid():
 
         return self.flux_grid, self.error_grid
 
+    def build_wcs(self, wave_dict=None):
+        npix_dec, npix_ra = np.shape(self.flux_grid)
+
+        ra_ref_pix = int(npix_ra/2)
+        dec_ref_pix = int(npix_dec/2)
+
+        wcs_dict = {'CUNIT1': 'deg', 'CUNIT2': 'deg',
+                    'CTYPE1': 'RA---TAN', 'CTYPE2': 'DEC--TAN',
+                    'CRPIX1': ra_ref_pix, 'CRPIX2': dec_ref_pix,
+                    'CRVAL1': self.x_grid[dec_ref_pix, ra_ref_pix],
+                    'CRVAL2': self.y_grid[dec_ref_pix, ra_ref_pix],
+                    'CDELT1': self.regrid_x, 'CDELT2': self.regrid_y}
+
+        if isinstance(wave_dict, dict):
+            wcs_dict = {**wcs_dict, **wave_dict}
+            print('Creating 3D WCS')
+        else:
+            print('Creating 2D WCS')
+
+        new_wcs = WCS(wcs_dict)
+        return new_wcs
+
     def plot_results(self, plot_error=False, plot_weights=False,
                      savepath=None):
 
@@ -172,13 +193,13 @@ class fibers_to_grid():
         plt.show()
         return None
 
-    def save_interp_image(self, hdr, outpath, filename):
+    def save_interp_image(self, hdr, outfile):
         hdu_f = fits.PrimaryHDU(self.flux_grid, header=hdr)
-        hdu_f.writeto(op.join(outpath, filename+'.fits'), overwrite=True)
+        hdu_f.writeto(outfile, overwrite=True)
         hdu_f.close()
 
         hdu_e = fits.PrimaryHDU(self.error_grid, header=hdr)
-        hdu_e.writeto(op.join(outpath, filename+'_e.fits'), overwrite=True)
+        hdu_e.writeto(outfile, overwrite=True)
         hdu_e.close()
 
     def test_flux_conservation(self):
