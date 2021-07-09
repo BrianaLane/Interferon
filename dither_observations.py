@@ -60,7 +60,7 @@ class dither_observation():
                           star_fwhm=8.0, fwhm_lim=(0.5, 10), mag_lim=10):
 
         if isinstance(guide_obs, go.guider_observations):
-            
+  
             print(' [DITHOBS:'+str(self.dither_group_id)+'] build normalized dithers')
 
             # check if matched each fits image has matched guider frames

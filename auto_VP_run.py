@@ -65,6 +65,7 @@ class VP_run():
    
         self.guider_path = guider_path
         self.guider_obs = None
+        self.guider_as_per_pix = guider_as_per_pix
 
         # self.object_ID_file = op.join(self.data_path, 'object_ID_list.csv')
         # self.object_ID_df = None
@@ -129,7 +130,7 @@ class VP_run():
     def obs_guider(self):
         if self.guider_path is not None:
             guid = go.guider_observations(self.guider_path,
-                                          guider_as_per_pix=guider_as_per_pix)
+                                          guider_as_per_pix=self.guider_as_per_pix)
             self.guider_obs = guid
         else:
             print('NO GUIDER PATH PROVIDED')
@@ -148,7 +149,7 @@ class VP_run():
             VP_file = dith_grp_df.iloc[i].filename
             fits_ex = vpf.VP_fits_frame(VP_file, self.fits_ext,
                                         fits_err_ext=self.fits_err_ext,
-                                        cen_file=self.cenfile,
+                                        cen_file=self.cen_file,
                                         guide_obs=self.guider_obs)
 
             dith_obj_lis.append(fits_ex)
@@ -157,17 +158,21 @@ class VP_run():
 
         if norm:
             dith.normalize_dithers(self.guider_obs)
-            self.fits_ext = dith.VP_frames[0].fits_ext
 
         return dith
 
     def build_data_cube(self, dith):
         dith.write_data_cube()
 
-    def run_all_dithers(self):
+    def run_all_dithers(self, norm=True):
+
+        if not self.match_dither:
+            self.build_dither_groups()
 
         dith_group_lis = self.data_df['dither_group_id'].unique()
+        print('AUTO-BUILD data cubes for ', len(dith_group_lis), ' dither groups')
         for g in dith_group_lis:
-            dith = self.dither_object(g, norm=True)
+            dith = self.dither_object(g, norm=norm)
             self.build_data_cube(dith)
-
+        if norm:
+            self.fits_ext = dith.VP_frames[0].fits_ext

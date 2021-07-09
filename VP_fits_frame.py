@@ -19,7 +19,7 @@ import IFU_spectrum as ifu_spec
 
 class VP_fits_frame():
     def __init__(self, filename, fits_ext, fits_err_ext=3,
-                 cen_file='/VP_config/IFUcen_VP_new_27m.csv', guide_obs=None):
+                 cen_file='VP_config/IFUcen_VP_new_27m.csv', guide_obs=None):
 
         self.filename = filename
         self.fits_ext = fits_ext
@@ -123,9 +123,8 @@ class VP_fits_frame():
     # new_ext_name (int/str): name of new fits extension
     # hdr_comment (str): comment to add to header of new extension
     def build_new_extension(self, new_ext_name, hdr_comment):
-
-        print('BUILDING new fits extension: [' + str(self.fits_name) +
-              '][EXT:' + str(self.fits_ext) + ']' )
+        
+        print('EXT', self.fits_ext, new_ext_name)
 
         hdulis = fits.open(self.filename, lazy_load_hdus=False)
 
@@ -133,10 +132,10 @@ class VP_fits_frame():
         # if it does overwrite extension with new dat+hdr
         try:
             hdulis[new_ext_name].data = self.dat
-            hdulis[new_ext_name].data = self.hdr
+            hdulis[new_ext_name].header = self.hdr
 
             hdulis.writeto(self.filename, overwrite=True)
-            print('Overwriting:', new_ext_name, 'extension')
+            print('OVERWRITING fits extension: [' + str(self.fits_name) +'][EXT:' + str(self.fits_ext) + ']' )
 
         # else if extension does not exist create new extension
         except:
@@ -147,6 +146,7 @@ class VP_fits_frame():
             hdulis_new[-1].header['comment'] = hdr_comment
 
             hdulis_new.writeto(self.filename, overwrite=True)
+            print('BUILDING new fits extension: [' + str(self.fits_name) +'][EXT:' + str(self.fits_ext) + ']' )
             hdulis_new.close()
 
         hdulis.close()
