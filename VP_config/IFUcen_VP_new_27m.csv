@@ -1,6 +1,6 @@
 # The new VP cen file reflecting the flip in the IFU
 # All units in arcseconds
-fib_id,RA,DEC,fiberd,fibersep
+fib_id,RA_offset,DEC_offset,fiberd,fibersep
 1,46.4293,-49.488,4.2,6.8
 2,39.2864,-49.488,4.2,6.8
 3,32.1434,-49.488,4.2,6.8
