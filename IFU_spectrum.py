@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from scipy import interpolate
 
 
-class IFU_spectrum():
+class spectrum():
 
     def __init__(self, spec, wave, z=None, obj_name=None):
         self.spec = spec
@@ -41,5 +41,5 @@ class IFU_spectrum():
         new_spec = f(new_wave)
         self.spec = new_spec
 
-    def fit_emission_lines(self):
+    def fit_lines(self):
         return None

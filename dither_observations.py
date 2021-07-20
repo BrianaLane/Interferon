@@ -54,7 +54,7 @@ class dither_observation():
         self.field_RA = None
         self.field_DEC = None
 
-        print('BUILD dither observation: [DITHOBS:'+str(self.dither_group_id)+']')
+        print('BUILD '+str(len(self.VP_frames))+' dither observation: [DITHOBS:'+str(self.dither_group_id)+']')
 
     def normalize_dithers(self, guide_obs, star_thres=10., num_bright_stars=10,
                           star_fwhm=8.0, fwhm_lim=(0.5, 10), mag_lim=10):
@@ -66,84 +66,90 @@ class dither_observation():
             # check if matched each fits image has matched guider frames
             obs_guide_lis = []
             for f in range(len(self.VP_frames)):
-                if self.VP_frames[f].guide_match is None:
+                if self.VP_frames[f].guide_match is False:
                     self.VP_frames[f].match_guider_frames(guide_obs)
                 obs_guide_lis.append(self.VP_frames[f].guider_ind)
             obs_guide_lis = np.hstack(obs_guide_lis)
+            
+            if len(obs_guide_lis) > 0:
 
-            # find the RA/DEC dither shift in pixels in guider cam frames
-            self.dith_df['RA_pix_shift'] = self.dith_df['RA_shift']/guide_obs.guider_ps
-            self.dith_df['DEC_pix_shift'] = self.dith_df['DEC_shift']/guide_obs.guider_ps
-
-            # find a guider image to use as reference for stars
-            ref_sources_df, ref_guide_ind = guide_obs.find_ref_guide_frame(obs_guide_lis, star_thres=star_thres, 
-                                            num_bright_stars=num_bright_stars, star_fwhm=star_fwhm, 
-                                            fwhm_lim=fwhm_lim, mag_lim=mag_lim)
-
-            guide_stars_lis = []
-            for f in self.VP_frames:
-                guide_ind_lis = f.guider_ind
-                frame_dith_num = f.dith_num
-
-                # update ref_sources_df with the correct dither coordinates
-                shift_df = self.dith_df[self.dith_df['dith_num'] == frame_dith_num]
-                x_mod = shift_df['RA_pix_shift'].values[0]
-                y_mod = shift_df['DEC_pix_shift'].values[0]
-                mod_ref_sources_df = ref_sources_df.copy()
-                mod_ref_sources_df['xcentroid'] = ref_sources_df['xcentroid']-x_mod
-                mod_ref_sources_df['ycentroid'] = ref_sources_df['ycentroid']-y_mod
-
-                for g in guide_ind_lis:
-                    sources_fit = guide_obs.measure_guide_star_params(g, mod_ref_sources_df)
-                    sources_fit = guide_obs.flag_stars(sources_fit.copy(),
-                                                       fwhm_lim=fwhm_lim,
-                                                       mag_lim=mag_lim)
-                    sources_fit['dith_num'] = frame_dith_num
-                    sources_fit['guide_ind'] = g
-
-                    good_sources_fit = sources_fit[sources_fit['bad_flag'] == False]
-                    guide_stars_lis.append(good_sources_fit)
-
-            guide_stars_df = pd.concat(guide_stars_lis).reset_index()
-            dith_stars_df = guide_stars_df.groupby(by = ['dith_num', 'id'],
-                                                   as_index=False).mean()
-
-            dith_star_count = dith_stars_df[['id', 'dith_num']].groupby(by='dith_num', as_index=False).count()
-            dith_star_count.rename(columns={'id': 'num_stars_used'},
-                                   inplace=True)
-
-            dith_flux_sum = dith_stars_df[['dith_num', 'flux_fit']].groupby(by='dith_num', as_index=False).sum()
-            dith_flux_sum['flux_norm'] = dith_flux_sum['flux_fit']/dith_flux_sum['flux_fit'].max()
-
-            dith_fwhm_avg = dith_stars_df[['dith_num', 'fwhm(arcseconds)']].groupby(by='dith_num', as_index=False).mean()
-
-            dith_norm_df1 = dith_flux_sum.merge(dith_fwhm_avg, on='dith_num',
-                                                how='outer')
-            dith_norm_df = dith_norm_df1.merge(dith_star_count, on='dith_num',
-                                               how='outer')
-
-            for i in self.VP_frames:
-                frame_dith_num = i.dith_num
-                see_val = dith_norm_df[dith_norm_df['dith_num']==frame_dith_num]['fwhm(arcseconds)'].values[0]
-                norm_val = dith_norm_df[dith_norm_df['dith_num']==frame_dith_num]['flux_norm'].values[0]
-                
-                i.seeing = see_val
-                i.dithnorm = norm_val
-                i.hdr['SEEING'] = see_val
-                i.hdr['DITHNORM'] = norm_val
-                dith_norm_dat = i.dat*norm_val
-                i.dat = dith_norm_dat
-
-                i.fits_ext = 'dithnorm'
-                i.build_new_extension('dithnorm',
-                                      'normalize dither spec from guide star flux')
+                # find the RA/DEC dither shift in pixels in guider cam frames
+                self.dith_df['RA_pix_shift'] = self.dith_df['RA_shift']/guide_obs.guider_ps
+                self.dith_df['DEC_pix_shift'] = self.dith_df['DEC_shift']/guide_obs.guider_ps
+    
+                # find a guider image to use as reference for stars
+                print('GUIDE', obs_guide_lis)
+                ref_sources_df, ref_guide_ind = guide_obs.find_ref_guide_frame(obs_guide_lis, star_thres=star_thres, 
+                                                num_bright_stars=num_bright_stars, star_fwhm=star_fwhm, 
+                                                fwhm_lim=fwhm_lim, mag_lim=mag_lim)
+    
+                guide_stars_lis = []
+                for f in self.VP_frames:
+                    guide_ind_lis = f.guider_ind
+                    frame_dith_num = f.dith_num
+    
+                    # update ref_sources_df with the correct dither coordinates
+                    shift_df = self.dith_df[self.dith_df['dith_num'] == frame_dith_num]
+                    x_mod = shift_df['RA_pix_shift'].values[0]
+                    y_mod = shift_df['DEC_pix_shift'].values[0]
+                    mod_ref_sources_df = ref_sources_df.copy()
+                    mod_ref_sources_df['xcentroid'] = ref_sources_df['xcentroid']-x_mod
+                    mod_ref_sources_df['ycentroid'] = ref_sources_df['ycentroid']-y_mod
+    
+                    for g in guide_ind_lis:
+                        sources_fit = guide_obs.measure_guide_star_params(g, mod_ref_sources_df)
+                        sources_fit = guide_obs.flag_stars(sources_fit.copy(),
+                                                           fwhm_lim=fwhm_lim,
+                                                           mag_lim=mag_lim)
+                        sources_fit['dith_num'] = frame_dith_num
+                        sources_fit['guide_ind'] = g
+    
+                        good_sources_fit = sources_fit[sources_fit['bad_flag'] == False]
+                        guide_stars_lis.append(good_sources_fit)
+    
+                guide_stars_df = pd.concat(guide_stars_lis).reset_index()
+                dith_stars_df = guide_stars_df.groupby(by = ['dith_num', 'id'],
+                                                       as_index=False).mean()
+    
+                dith_star_count = dith_stars_df[['id', 'dith_num']].groupby(by='dith_num', as_index=False).count()
+                dith_star_count.rename(columns={'id': 'num_stars_used'},
+                                       inplace=True)
+    
+                dith_flux_sum = dith_stars_df[['dith_num', 'flux_fit']].groupby(by='dith_num', as_index=False).sum()
+                dith_flux_sum['flux_norm'] = dith_flux_sum['flux_fit']/dith_flux_sum['flux_fit'].max()
+    
+                dith_fwhm_avg = dith_stars_df[['dith_num', 'fwhm(arcseconds)']].groupby(by='dith_num', as_index=False).mean()
+    
+                dith_norm_df1 = dith_flux_sum.merge(dith_fwhm_avg, on='dith_num',
+                                                    how='outer')
+                dith_norm_df = dith_norm_df1.merge(dith_star_count, on='dith_num',
+                                                   how='outer')
+    
+                for i in self.VP_frames:
+                    frame_dith_num = i.dith_num
+                    see_val = dith_norm_df[dith_norm_df['dith_num']==frame_dith_num]['fwhm(arcseconds)'].values[0]
+                    norm_val = dith_norm_df[dith_norm_df['dith_num']==frame_dith_num]['flux_norm'].values[0]
+     
+                    i.seeing = see_val
+                    i.dithnorm = norm_val
+                    i.hdr['SEEING'] = see_val
+                    i.hdr['DITHNORM'] = norm_val
+                    dith_norm_dat = i.dat*norm_val
+                    i.dat = dith_norm_dat
+    
+                    i.build_new_extension('dithnorm',
+                                          'normalize dither spec from guide star flux')
+                    i.fits_ext = 'dithnorm'
+            
+            else:
+                print('WARNING: no guider frames found. [DITHOBS:'+str(self.dither_group_id)+'] will NOT be normalized')
 
         else:
             print('guide_obs must be a guider_observations class object')
             return None
 
     def build_common_wavesol(self):
-        
+
         print(' [DITHOBS:'+str(self.dither_group_id)+'] build common wavelength solution')
 
         # establish the wavelength solution of the first dither for all dithers
@@ -174,9 +180,9 @@ class dither_observation():
                 self.VP_frames[i].hdr['CDELT1'] = dith1_obj.wave_delta
 
                 new_ext_name = 'comwave'
-                hdr_comment = 'interpolated to common wavelength grid \
-                (dither 1)'
+                hdr_comment = 'interp. to common wavelength grid'
                 self.VP_frames[i].build_new_extension(new_ext_name, hdr_comment)
+                self.VP_frames[i].fits_ext = new_ext_name
 
     def build_master_fiber_files(self):
 

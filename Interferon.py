@@ -8,17 +8,21 @@ Created on Fri Jul  2 15:28:36 2021
 # %%
 from auto_VP_run import VP_run
 
-data_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/20210411_test/redux'
+data_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/20210411_test2/redux'
 guider_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/20210411_test/guider'
 dith_file = 'VP_config/dith_vp_6subdither.csv'
 cen_file = 'VP_config/IFUcen_VP_new_27m.csv'
 
+# %%
 vp1 = VP_run(data_path, fits_ext=0,
                              guider_path=guider_path, dith_file=dith_file,
                              cen_file=cen_file, guider_as_per_pix=0.51)
 
 # %%
-dith = vp1.dither_object(1, norm=True)
+vp1.run_all_dithers(norm=True)
+
+# %%
+dith = vp1.dither_object(8, norm=True)
 
 # %%
 vp1.build_data_cube(dith)
@@ -38,8 +42,8 @@ guid = go.guider_observations(guider_path)
 
 # %%
 
-file_list = glob.glob(data_path + '/COOLJ1606+1406*_multi.fits')
-# ext = 'dithnorm'
+file_list = glob.glob(data_path + '/COOLJ0931*_multi.fits')
+#ext = 'dithnorm'
 ext = 0
 
 obj_lis = []
@@ -48,6 +52,7 @@ for f in file_list:
     obj_lis.append(fits_ex)
 
 dith = do.dither_observation(obj_lis, dither_group_id=1)
+# %%
 dith.normalize_dithers(guid)
 # dith.build_common_wavesol()
 # dith.build_master_fiber_files()

@@ -124,7 +124,7 @@ class guider_observations():
         hdu.close()
         return sources_df.copy()
 
-    def flag_stars(sources_df, fwhm_lim=(0.5, 10), mag_lim=10):
+    def flag_stars(self, sources_df, fwhm_lim=(0.5, 10), mag_lim=10):
         for i in range(len(sources_df)):
             if (np.isnan(sources_df.iloc[i]['mag_fit'])) or (np.isnan(sources_df.iloc[i]['mag_fit'])):
                 sources_df.at[i, 'bad_flag'] = True
@@ -151,9 +151,7 @@ class guider_observations():
                 source_fit = self.measure_guide_star_params(guide_ind,
                                                             source_ex)
 
-                source_fit = self.flag_stars(source_fit.copy(),
-                                                    fwhm_lim=fwhm_lim,
-                                                    mag_lim=mag_lim)
+                source_fit = self.flag_stars(source_fit.copy(), fwhm_lim=fwhm_lim, mag_lim=mag_lim)
 
                 source_fit['guide_ind'] = guide_ind
 
@@ -165,3 +163,6 @@ class guider_observations():
                     continue
             else:
                 continue
+            
+            print('No reference guide frame found')
+            return None, None

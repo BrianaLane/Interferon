@@ -12,10 +12,11 @@ from astropy.io import fits
 from astropy.wcs import WCS
 # from astropy.coordinates import Angle
 
-from collapsed_image import cube_image
+import image_utils
+from IFU_spectrum import spectrum
 
 
-class data_cube():
+class cube():
 
     def __init__(self, cube_file, err_cube_file=None):
 
@@ -59,7 +60,7 @@ class data_cube():
 
         else:
             if isinstance(self.cube_err, np.array):
-                col_frame = self.cube_err[wave_inds]
+                col_frame = np.sum(self.cube_err[wave_inds], axis=0)
             else:
                 print('NO ERROR CUBE PROVIDED')
                 return None
@@ -78,7 +79,9 @@ class data_cube():
                 print('NO ERROR CUBE PROVIDED')
                 return None
 
-        return sum_spec
+        spec_obj = spectrum(sum_spec, self.wave, z=None, obj_name=self.object)
+
+        return spec_obj
 
     def extract_spectrum(self, RA, DEC, apert_rad, err=False):
 
@@ -92,7 +95,9 @@ class data_cube():
                 print('NO ERROR CUBE PROVIDED')
                 return None
 
-        return None
+        spec_obj = spectrum(sum_spec, self.wave, z=None, obj_name=self.object)
+
+        return spec_obj
 
     def build_sensitiviy_curve(self):
         # find the center of mass of star

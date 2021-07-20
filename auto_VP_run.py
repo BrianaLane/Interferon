@@ -126,7 +126,7 @@ class VP_run():
             else:
                 self.data_df.drop(data_obj_inds, inplace=True)
                 self.data_df.reset_index(drop=True, inplace=True)
-                
+     
     def obs_guider(self):
         if self.guider_path is not None:
             guid = go.guider_observations(self.guider_path,

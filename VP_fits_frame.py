@@ -30,7 +30,7 @@ class VP_fits_frame():
         self.obs_datetime = dt.datetime.strptime(self.fits_name.split('_')[-2],
                                                  '%Y%m%dT%H%M%S')
 
-        if self.fits_name.split('_')[-4] == 'dither':
+        if 'dither' in self.fits_name.split('_'):
             self.dith_num = int(self.fits_name.split('_')[-3])
             self.object = '_'.join(self.fits_name.split('_')[0:-4])
         else:
@@ -45,8 +45,8 @@ class VP_fits_frame():
         if isinstance(guide_obs, go.guider_observations):
             self.match_guider_frames(guide_obs)
         else:
-            self.guider_ind = None
-            self.guide_match = None
+            self.guider_ind = []
+            self.guide_match = False
 
         self.dither_group_id = None
 
@@ -60,7 +60,7 @@ class VP_fits_frame():
                 self.dat_err = hdulis[self.fits_err_ext].data
             except KeyError:
                 print(self.fits_ext, 'does not exist')
-                
+
             self.hdr = hdulis[self.fits_ext].header
 
             if 'SEEING' not in self.hdr:
@@ -110,49 +110,40 @@ class VP_fits_frame():
             gmatch = guider_df[(guider_df['obs_datetime']>=d_dt) & (guider_df['obs_datetime']<=(d_dt+d_et))]
             gmatch_inds = gmatch.index.values
             self.guider_ind = gmatch_inds
+            self.guide_match = True
             if len(gmatch_inds) < 1:
-                self.guide_match = False
                 print('WARNING: No guider frames found for', self.filename)
-            else:
-                self.guide_match = True
 
-            self.match_guide_frames = True
         else:
             print('guide_obs but be a guider_observations class object')
 
     # new_ext_name (int/str): name of new fits extension
     # hdr_comment (str): comment to add to header of new extension
     def build_new_extension(self, new_ext_name, hdr_comment):
-        
-        print('EXT', self.fits_ext, new_ext_name)
 
         hdulis = fits.open(self.filename, lazy_load_hdus=False)
+        
+        dat_new = self.dat
+        hdr_new = self.hdr
+        hdr_new['EXTNAME'] = new_ext_name
+        hdr_new['comment'] = hdr_comment
 
         # first check if extension exists
         # if it does overwrite extension with new dat+hdr
         try:
-            hdulis[new_ext_name].data = self.dat
-            hdulis[new_ext_name].header = self.hdr
-
-            hdulis.writeto(self.filename, overwrite=True)
-            print('OVERWRITING fits extension: [' + str(self.fits_name) +'][EXT:' + str(self.fits_ext) + ']' )
+            fits.update(self.filename, new_dat, new_hdr, 'dithnorm')
+            print('OVERWRITING fits extension: [' + str(self.fits_name) +'][EXT:' + str(new_ext_name) + ']' )
 
         # else if extension does not exist create new extension
-        except:
-            hdu_new = fits.ImageHDU(self.dat, header=self.hdr)
-            hdulis_new = fits.HDUList(hdulis+[hdu_new])
+        except KeyError:
+            new_hdu = fits.ImageHDU(new_dat, header=new_hdr)
+            hdulis.append(new_hdu)
 
-            hdulis_new[-1].header['EXTNAME'] = new_ext_name
-            hdulis_new[-1].header['comment'] = hdr_comment
-
-            hdulis_new.writeto(self.filename, overwrite=True)
-            print('BUILDING new fits extension: [' + str(self.fits_name) +'][EXT:' + str(self.fits_ext) + ']' )
-            hdulis_new.close()
+            hdulis.writeto(self.filename, overwrite=True, checksum=True,
+                           output_verify='silentfix')
+            print('BUILDING new fits extension: [' + str(self.fits_name) +'][EXT:' + str(new_ext_name) + ']' )
 
         hdulis.close()
-
-        # rebuild hdr information with new extension details
-        self.build_hdr_info()
 
     # sky_model (array): user provided sky model
     # with same shape and wave sol as data spectra
@@ -185,7 +176,7 @@ class VP_fits_frame():
         else:
             spec = np.sum(self.dat[fib_inds, :], axis=0)
 
-        sum_spec = ifu_spec.IFU_spectrum(spec, self.wave, z=z)
+        sum_spec = ifu_spec.spectrum(spec, self.wave, z=z)
 
         if plot:
             sum_spec.plot_spec(spec_units='Electrons per second')

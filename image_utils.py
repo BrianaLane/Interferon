@@ -6,6 +6,7 @@ Created on Thu Jul  8 16:13:46 2021
 @author: Briana
 """
 
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -20,8 +21,11 @@ from astropy.utils.exceptions import AstropyWarning
 import warnings
 
 with warnings.catch_warnings():
-    warnings.filterwarnings("ignore")
-    from photutils import DAOStarFinder
+   warnings.filterwarnings("ignore")
+   from photutils import DAOStarFinder
+
+if not sys.warnoptions:
+    warnings.simplefilter("ignore")
 
 from astroquery.sdss import SDSS
 from photutils import CircularAperture, aperture_photometry, CircularAnnulus
@@ -45,6 +49,9 @@ def plot_subframe(ax, frame, vmin=None, vmax=None, c_map='Greys'):
 
 def plot_frame(frame, wcs=None, vmin=None, vmax=None, c_map='Greys',
                save=False, outfile=None):
+    
+    if wcs.naxis==3:
+        wcs = WCS(wcs.to_header(), naxis=2)
 
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(1, 1, 1, projection=wcs)
@@ -55,7 +62,7 @@ def plot_frame(frame, wcs=None, vmin=None, vmax=None, c_map='Greys',
         try:
             plt.savefig(outfile)
         except:
-            print('Invaild save name for plot')
+            print('Invaild outfile path to save plot')
 
     plt.show()
 
