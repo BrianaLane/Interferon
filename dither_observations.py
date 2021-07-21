@@ -8,6 +8,7 @@ Created on Fri Jul  2 15:28:36 2021
 
 import pandas as pd
 import numpy as np
+import sys
 
 from astropy import units as u
 from astropy.io import fits
@@ -29,9 +30,7 @@ class dither_observation():
         self.dith_order_lis = np.ones(len(VP_frames))
         for f in range(len(self.VP_frames)):
             if not isinstance(self.VP_frames[f], vpf.VP_fits_frame):
-                print('Must provide list of VP_fits_frame objects for \
-                      dither set')
-                return None
+                sys.exit('Must provide list of VP_fits_frame objects for dither set')
             else:
                 self.dith_order_lis[f] = self.VP_frames[f].dith_num
                 if dither_group_id is not None:

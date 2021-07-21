@@ -123,22 +123,21 @@ class VP_fits_frame():
 
         hdulis = fits.open(self.filename, lazy_load_hdus=False)
         
-        dat_new = self.dat
-        hdr_new = self.hdr
+        dat_new = self.dat.copy()
+        hdr_new = self.hdr.copy()
         hdr_new['EXTNAME'] = new_ext_name
         hdr_new['comment'] = hdr_comment
+        new_hdu = fits.ImageHDU(dat_new, header=hdr_new)
 
         # first check if extension exists
         # if it does overwrite extension with new dat+hdr
         try:
-            fits.update(self.filename, new_dat, new_hdr, 'dithnorm')
+            fits.update(self.filename, new_hdu.data, new_hdu.header, 'dithnorm', output_verify='silentfix')
             print('OVERWRITING fits extension: [' + str(self.fits_name) +'][EXT:' + str(new_ext_name) + ']' )
 
         # else if extension does not exist create new extension
         except KeyError:
-            new_hdu = fits.ImageHDU(new_dat, header=new_hdr)
             hdulis.append(new_hdu)
-
             hdulis.writeto(self.filename, overwrite=True, checksum=True,
                            output_verify='silentfix')
             print('BUILDING new fits extension: [' + str(self.fits_name) +'][EXT:' + str(new_ext_name) + ']' )

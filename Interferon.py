@@ -33,27 +33,32 @@ vp1.build_data_cube(dith)
 # import IFU_spectrum as ifu_spec
 # import emission_line_fitting_emcee
 # import model_line_functions as mlf
+
 import glob as glob
 import guider_observations as go
 import dither_observations as do
 import VP_fits_frame as vpf
 
-guid = go.guider_observations(guider_path)
+#guid = go.guider_observations(guider_path)
 
 # %%
 
 file_list = glob.glob(data_path + '/COOLJ0931*_multi.fits')
-#ext = 'dithnorm'
-ext = 0
+ext = 'dithnorm'
+#ext = 0
 
 obj_lis = []
 for f in file_list:
-    fits_ex = vpf.VP_fits_frame(f, ext, guide_obs=guid)
+    fits_ex = vpf.VP_fits_frame(f, ext, guide_obs=None)
     obj_lis.append(fits_ex)
 
 dith = do.dither_observation(obj_lis, dither_group_id=1)
 # %%
-dith.normalize_dithers(guid)
-# dith.build_common_wavesol()
-# dith.build_master_fiber_files()
+#dith.normalize_dithers(guid)
+dith.build_common_wavesol()
+dith.build_master_fiber_files()
 # dith.write_data_cube()
+
+# %%
+
+    
