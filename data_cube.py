@@ -16,7 +16,7 @@ import image_utils
 from IFU_spectrum import spectrum
 
 
-class cube():
+class Cube():
 
     def __init__(self, cube_file, err_cube_file=None):
 
@@ -42,21 +42,24 @@ class cube():
         else:
             self.cube_err = None
 
-    def collapse_frame(self, wave_range=None, err=False):
+    def collapse_frame(self, wave_range=None, err=False, save=False):
 
         if isinstance(wave_range, int) or isinstance(wave_range, float):
             wave_inds = np.where(self.wave == wave_range)
+            wavename = str(wave_range)
 
         elif isinstance(wave_range, tuple):
             wave_inds = np.where((self.wave > np.min(wave_range)) &
                                  (self.wave < np.max(wave_range)))
+            wavename = '_range_'+str(np.min(wave_range))+'_'+str(np.max(wave_range))
 
         else:
             #if no wave range provide collapse entire cube into 2d frame
             wave_inds = np.arange(len(self.wave))
+            wave_name = 'all'
 
         if not err:
-            col_frame = self.cube[wave_inds]
+            col_frame = np.sum(self.cube[wave_inds], axis=0)
 
         else:
             if isinstance(self.cube_err, np.array):
@@ -64,7 +67,14 @@ class cube():
             else:
                 print('NO ERROR CUBE PROVIDED')
                 return None
-
+            
+        if save:
+            #add giving it the cube header but only 2D WCS
+            hdu = fits.PrimaryHDU(col_frame)            
+            outname = self.filename.split('.fits')[0]+'_collpasecube_'+wave_name+'.fits'
+            print('SAVING collpased cube: '+outname)
+            hdu.writeto(outname, overwrite=True)
+                
         return col_frame
 
     def collapse_spectrum(self, err=False):
