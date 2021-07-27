@@ -18,6 +18,7 @@ import interpolate_IFU
 import guider_observations as go
 import IFU_spectrum as ifu_spec
 import VP_fits_frame as vpf
+from data_cube import Cube
 
 
 class dither_observation():
@@ -38,6 +39,17 @@ class dither_observation():
 
         self.dither_group_id = dither_group_id
         self.dith_df = pd.read_csv(dith_file, skiprows=2)
+        self.num_dithers = int(len(self.dith_df))
+
+        #check validity of the dither file provided
+        dith_cols = ['dith_num', 'RA_shift', 'DEC_shift']
+        dith_patterns = [1, 3, 6]
+        if self.num_dithers not in dith_patterns:
+            sys.exit('INVALID dither pattern in dith_file: must be 1, 3, or 6 dither pattern')
+        try:
+            self.dith_df[dith_cols]
+        except KeyError:
+            sys.exit('INVALID dither file: requires columns '+str(dith_cols))
 
         self.wave = None
         self.wave_start = None
@@ -227,23 +239,31 @@ class dither_observation():
         fib_df = pd.concat(fib_df_lis)
         self.master_fib_df = fib_df.reset_index(drop=True)
 
-    def make_data_cube(self, grid=(0, 0, 0, 0)):
+    def make_data_cube(self, grid=(0, 0, 0, 0),
+                       regrid_size=None, max_radius=None, kern_sig=None):
 
         if not isinstance(self.master_spec, np.ndarray):
             self.build_master_fiber_files()
 
-        print(' [DITHOBS:'+str(self.dither_group_id)+'] build data cube and error cube')
+        print(' [DITHOBS:'+str(self.dither_group_id)+'] build data cube and error cube with '+str(self.num_dithers)+' dither pattern')
 
         fiberd_as = self.VP_frames[0].fib_df.iloc[0]['fiberd']  # in arcseconds
         # convert all arcsecond units to degrees
         fiberd = Angle(fiberd_as*u.arcsecond).degree
+        
+        regrid_size = fiberd/2.0
+        kern_sig = fiberd
+        max_radius = fiberd*5.0
+        
+        if self.num_dithers == 6:
+            regrid_size = regrid_size/2.0
+            kern_sig = kern_sig/2.0
+
+        print('  [DATA CUBE] pixel regrid:'+str(np.round(regrid_size*3600, 1))+'"; kernal size:'+str(np.round(kern_sig*3600, 1))+'"')
 
         fib_RA = self.master_fib_df['RA'].values
         fib_DEC = self.master_fib_df['DEC'].values
 
-        regrid_size = fiberd/2.0
-        kern_sig = fiberd
-        max_radius = fiberd*5.0
         self.interp_class = interpolate_IFU.fibers_to_grid(fib_RA,
                                                            fib_DEC, fiberd,
                                                            regrid_size,
@@ -343,6 +363,9 @@ class dither_observation():
         outname_err = outname.split('.fits')[0]+'_err.fits'
         hdu_err.writeto(outname_err, overwrite=True)
         hdu_err.close()
+        
+        cube_obj = Cube(cube_file=outname, err_cube_file=outname_err)
+        return cube_obj
 
     # fib_ind (list/array)(optional,
     # default will sum all fibers): list of fiber indices to sum and plot

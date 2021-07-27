@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from astropy.io import fits
+from astropy.wcs import WCS
 import astropy.visualization as av
 from astropy.modeling import models, fitting
 from astropy import units as u
@@ -65,11 +66,6 @@ def plot_frame(frame, wcs=None, vmin=None, vmax=None, c_map='Greys',
             print('Invaild outfile path to save plot')
 
     plt.show()
-
-
-def cube_to_image_hdr(col_frame, wcs_hdr):
-    hdu_new = fits.PrimaryHDU(col_frame, header=wcs_hdr)
-    return hdu_new
 
 
 def find_stars(frame, star_thres=10., num_bright_stars=10,

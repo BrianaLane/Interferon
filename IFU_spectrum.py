@@ -9,6 +9,7 @@ Created on Fri Jul  2 15:28:36 2021
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import interpolate
+from astropy.io import fits
 
 
 class spectrum():
@@ -40,6 +41,21 @@ class spectrum():
         f = interpolate.interp1d(self.wave, self.spec)
         new_spec = f(new_wave)
         self.spec = new_spec
+        
+    def save_fits(self, outname, hdr_comment='None'):
+
+        hdu = fits.PrimaryHDU(self.spec) 
+        hdu.header['OBJECT'] = self.obj_name
+        hdu.header['Z'] = self.z
+        hdu.header['CRVAL1'] = self.wave[0]
+        hdu.header['CRPIX1'] = 1
+        hdu.header['CDELT1'] = self.wave[1] - self.wave[0]
+        hdu.header['CTYPE1'] = 'Angstrom'
+        if hdr_comment is not None:
+            hdu.header['COMMENT'] = hdr_comment
+        
+        print('SAVING spctrum: '+outname)
+        hdu.writeto(outname, overwrite=True)
 
     def fit_lines(self):
         return None
