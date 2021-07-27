@@ -89,7 +89,10 @@ class guider_observations():
 
         hdu.close()
 
-        return sources_df.copy()
+        if sources_df is None:
+            return None
+        else:
+            return sources_df.copy()
 
     def identify_guide_stars(self, guide_ind):
         gframe_df = self.guider_df.iloc[guide_ind]
@@ -147,7 +150,7 @@ class guider_observations():
             source_ex = self.find_guide_stars(guide_ind, star_thres=star_thres,
                                               num_bright_stars=num_bright_stars,
                                               star_fwhm=star_fwhm)
-            if len(source_ex) > 1:
+            if soure_ex is not None:
                 source_fit = self.measure_guide_star_params(guide_ind,
                                                             source_ex)
 

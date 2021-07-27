@@ -77,22 +77,27 @@ def find_stars(frame, star_thres=10., num_bright_stars=10,
                             brightest=num_bright_stars)
 
     sources = daofind(frame)
-    for col in sources.colnames:
-        sources[col].info.format = '%.8g'  # for consistent table output
-    sources_df = sources.to_pandas()
+    
+    if sources is None:
+        return None
 
-    if plot_sources:
-        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-        plot_subframe(ax, frame, vmin=1310, vmax=1400)
-        for i in range(len(sources_df)):
-            aperture = CircularAperture((sources_df.iloc[i]['xcentroid'],
-                                         sources_df.iloc[i]['ycentroid']),
-                                        r=star_fwhm)
-
-            aperture.plot(color='red', lw=2.5)
-        plt.show()
-
-    return sources_df.copy()
+    else:
+        for col in sources.colnames:
+            sources[col].info.format = '%.8g'  # for consistent table output
+        sources_df = sources.to_pandas()
+    
+        if plot_sources:
+            fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+            plot_subframe(ax, frame)
+            for i in range(len(sources_df)):
+                aperture = CircularAperture((sources_df.iloc[i]['xcentroid'],
+                                             sources_df.iloc[i]['ycentroid']),
+                                            r=star_fwhm)
+    
+                aperture.plot(color='red', lw=2.5)
+            plt.show()
+    
+        return sources_df.copy()
 
 
 def identify_stars(frame, hdr):
