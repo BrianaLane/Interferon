@@ -84,27 +84,22 @@ class VP_run():
             obs_ct = 1
             # iterate through each unique object name in that night of data
             for o in obj_lis:
-                obj_df = self.data_df[self.data_df['object'] == o]
-                dith_num_lis = obj_df['dith_num']
-                unique_dith_names = dith_num_lis.unique()
-
-                num_dup_lis = []
-                # iterate through the list of unique dithers for that object
-                # search for duplicate objects+dith_num
-                for i in unique_dith_names:
-                    # sort all object dithers with same dith_num by
-                    # observation time
-                    dith_num_inds = self.data_df[(self.data_df['object']==o) & (self.data_df['dith_num']==i)].sort_values(by='obs_datetime').index
-                    # assign obs number to each dither
-                    # if more than one of the same dither position it will get
-                    # assigned different obs number
-                    # sorting by observation time will group dithers taken at
-                    # same time with same obs number
-                    self.data_df.at[dith_num_inds, 'dither_group_id'] = np.arange(len(dith_num_inds))+obs_ct
-                    num_dup_lis.append(len(dith_num_inds))
-                obs_ct = obs_ct+np.max(num_dup_lis)
-
-            print('   Found', obs_ct, 'dither groups')
+                obj_df = self.data_df[self.data_df['object'] == o].sort_values(by='obs_datetime')
+                
+                dith_num_lis = []
+                df_ct = 0
+                for i in range(len(obj_df)):
+                    dith_ind = obj_df.index[i]
+                    dith_num = int(obj_df.iloc[i]['dith_num'])
+                    dith_num_lis.append(dith_num)
+                    df_ct = df_ct+1
+                    if len(set(dith_num_lis)) != df_ct:
+                        obs_ct = obs_ct+1
+                        dith_num_lis = [dith_num]
+                        df_ct = 1
+                    self.data_df.at[dith_ind, 'dither_group_id'] = obs_ct
+                obs_ct = obs_ct+1
+            print('   Found', len(set(self.data_df['dither_group_id'].values)), 'dither groups')
 
         else:
             self.data_df['dither_group_id'] = np.arange(len(self.data_df))+1
