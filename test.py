@@ -16,9 +16,12 @@ Created on Fri Jul  2 15:28:36 2021
 # %%
 from auto_VP_run import VP_run
 
-date = '20210411'
-data_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/COOL_Lamps_data/'+date+'/redux'
-guider_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/COOL_Lamps_data/'+date+'/guider'
+date = '20210710'
+#data_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/COOL_Lamps_data/'+date+'/redux_2'
+#guider_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/COOL_Lamps_data/'+date+'/guider'
+
+data_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/TAURUS_2021_data/'+date+'/redux'
+guider_path = '/Volumes/B_SS/VIRUS_P/VP_reduction/TAURUS_2021_data/'+date+'/guider'
 dith_file = 'VP_config/dith_vp_6subdither.csv'
 cen_file = 'VP_config/IFUcen_VP_new_27m.csv'
 
@@ -27,13 +30,14 @@ vp1 = VP_run(data_path, fits_ext=0,
                              guider_path=guider_path, dith_file=dith_file,
                              cen_file=cen_file, guider_as_per_pix=0.51)
 
-#vp1.build_dither_groups()
+vp1.build_dither_groups()
 
 # %%
 vp1.run_all_dithers(norm=True)
 
 # %%
-dith = vp1.dither_object(8, norm=True)
+dith = vp1.dither_object(1, norm=True)
+vp1.build_data_cube(dith)
 
 # %%
 vp1.build_data_cube(dith)

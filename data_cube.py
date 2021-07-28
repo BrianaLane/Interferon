@@ -7,10 +7,10 @@ Created on Tue Jul  6 11:07:41 2021
 """
 import numpy as np
 
-# from astropy import units as u
 from astropy.io import fits
 from astropy.wcs import WCS, utils
-# from astropy.coordinates import Angle
+from astropy import units as u
+from astropy.coordinates import SkyCoord
 
 import image_utils as imu
 from IFU_spectrum import spectrum
@@ -33,16 +33,21 @@ class Cube():
 
         self.wcs = WCS(self.hdr)
         self.wcs_2d = WCS(self.hdr, naxis=[1, 2])
-        self.x_grid, self.y_grid = np.meshgrid(np.arange(np.shape(self.cube)[1]),
-                                               np.arange(np.shape(self.cube)[0]))
+        self.x_grid, self.y_grid = np.meshgrid(np.arange(np.shape(self.cube)[2]),
+                                               np.arange(np.shape(self.cube)[1]))
         self.coord_grid = utils.pixel_to_skycoord(self.x_grid, self.y_grid,
                                                   self.wcs_2d)
+        self.pix_scale = np.NaN 
         self.wave = self.hdr['CRVAL3'] + ((np.arange(self.hdr['NAXIS3']) * self.hdr['CDELT3']))
 
         if err_cube_file is not None:
-            hdu_err = fits.open(err_cube_file)
-            self.cube_err = hdu_err[0].data
-            hdu_err.close()
+            try:
+                hdu_err = fits.open(err_cube_file)
+                self.cube_err = hdu_err[0].data
+                hdu_err.close()
+            except:
+                print('INVALID ERROR CUBE FILE PROVIDED')
+                self.cube_err = None
         else:
             self.cube_err = None
             
@@ -86,10 +91,10 @@ class Cube():
             col_frame = np.sum(self.cube[wave_inds], axis=0)
 
         else:
-            if isinstance(self.cube_err, np.array):
+            if self.cube_err is not None:
                 col_frame = np.sum(self.cube_err[wave_inds], axis=0)
             else:
-                print('NO ERROR CUBE PROVIDED')
+                print('ERROR: no error cube provided')
                 return None
             
         if (wave_name == 'all') and (err==False):
@@ -113,10 +118,10 @@ class Cube():
             sum_spec = np.sum(self.cube, axis=(1,2))
 
         else:
-            if isinstance(self.cube_err, np.array):
+            if self.cube_err is not None:
                 sum_spec = np.sum(self.cube_err, axis=0)
             else:
-                print('NO ERROR CUBE PROVIDED')
+                print('ERROR: no error cube provided')
                 return None
 
         spec_obj = spectrum(sum_spec, self.wave, z=None, obj_name=self.object)
@@ -133,20 +138,32 @@ class Cube():
         return spec_obj
 
     def extract_spectrum(self, RA, DEC, apert_rad, err=False):
-
-        if not err:
-            sum_spec = np.sum(self.cube, axis=0)
-
+        
+        if isinstance(RA, float) and isinstance(DEC, float):
+            c = SkyCoord(ra=RA*u.degree, dec=DEC*u.degree, frame='icrs')
         else:
-            if isinstance(self.cube_err, np.array):
-                sum_spec = np.sum(self.cube_err, axis=0)
+            print('ERROR: RA and DEC must be in degrees')
+            return None
+        
+        if not isinstance(apert_rad, float):
+            print('ERROR: apert_rad must be in degrees')
+            return None
+
+        grid_sep = self.coord_grid.separation(c)
+        ap_inds = np.where(grid_sep < apert_rad*u.degree)
+        
+        if not err:
+            ap_cube = self.cube[ap_inds]
+        else:
+            if self.cube_err is not None:
+                ap_cube = self.cube_err[ap_inds]
             else:
-                print('NO ERROR CUBE PROVIDED')
+                print('ERROR: no error cube provided')
                 return None
+            
+        ext_spec = np.sum(ap_cube, axis=0)
 
-        spec_obj = spectrum(sum_spec, self.wave, z=None, obj_name=self.object)
-
-        return spec_obj
+        return ext_spec
     
     def extract_star_spec(self):
         if self.col_cube_im is None:
@@ -158,7 +175,15 @@ class Cube():
         sources_df = imu.measure_star_params(self.col_cube_im,
                                              sources_df.copy())
         
+        #star_cent_ra = sources_df.iloc[0]['RA']
+        #star_cent_dec = sources_df.iloc[0]['DEC']
+        #star_ap = sources_df.iloc[0]['fwhm']
+        #star_spec = self.extract_spectrum(star_cent_ra, star_cent_dec,
+        #                                    star_ap)
+        #star_spec_err = self.extract_spectrum(star_cent_ra, star_cent_dec,
+        #                                    star_ap, err=True)
         
+        return sources_df
         
 
     def build_sensitiviy_curve(self):
