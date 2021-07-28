@@ -187,9 +187,8 @@ class Cube():
         
 
     def build_sensitiviy_curve(self):
-        # find the center of mass of star
         # call extract spectrum to build spectrum of star
-        # could decide on ap_rad by fitting profile to image slice
+        cube_star_spec = self.extract_star_spec()
         # find lit spectrum to compare
         # divide to get sensitivty curve
         # correct for airmass
