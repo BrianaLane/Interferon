@@ -8,9 +8,12 @@ Created on Thu Jul  8 16:13:46 2021
 
 import sys
 import numpy as np
+import json
+import requests
 import matplotlib.pyplot as plt
+import pandas as pd
 
-from astropy.io import fits
+from astropy.io import fits, ascii
 from astropy.wcs import WCS
 import astropy.visualization as av
 from astropy.modeling import models, fitting
@@ -100,13 +103,12 @@ def find_stars(frame, star_thres=10., num_bright_stars=10,
         return sources_df.copy()
 
 
-def identify_stars(frame, hdr):
+def get_star_mag(frame, wcs):
 
     g_coords = coords.SkyCoord(hdr['RA'], hdr['DEC'])
-    sources_tab = SDSS.query_crossid(g_coords,
-                                     photoobj_fields=['modelMag_g',
-                                                      'modelMag_i'])
-    sources_df = sources_tab.to_pandas()
+    params = {'nDetections.min': 0, 'gQfPerfect.min': 0.85,
+             'rQfPerfect.min': 0.85,'iQfPerfect.min': 0.85,
+             'gMeanPSFMag.min': 0, 'rMeanPSFMag.min': 0, 'iMeanPSFMag.min': 0}
 
     return sources_df
 
@@ -175,3 +177,93 @@ def measure_star_params(frame, sources_df, plot_star_cutouts=False):
             sources_df.at[s, 'mag_fit'] = np.NaN
 
     return sources_df.copy()
+
+
+def PanSTARRS_info(table='mean', release='dr1',check_cols=None,
+                   check_params=None):
+
+    baseurl="https://catalogs.mast.stsci.edu/api/v0.1/panstarrs"
+    
+    #checks if the table and release params are valid
+    #raises value error if not
+    releaselist = ("dr1", "dr2")
+    if release not in ("dr1","dr2"):
+        raise ValueError("Bad value for release (must be one of {})".format(', '.join(releaselist)))
+    if release=="dr1":
+        tablelist = ("mean", "stack")
+    else:
+        tablelist = ("mean", "stack", "detection")
+    if table not in tablelist:
+        raise ValueError("Bad value for table (for {} must be one of {})".format(release, ", ".join(tablelist)))
+    
+    meta_url = "{baseurl}/{release}/{table}/metadata".format(**locals())
+    r_meta = requests.get(meta_url)
+    r_meta.raise_for_status()
+    meta_json = r_meta.json()
+    table_cols_df = pd.DataFrame.from_records(meta_json)
+
+    table_cols = table_cols_df['name'].values
+    valid_cols = [c.lower() for c in list(table_cols)]
+    
+    if isinstance(check_params, dict):
+        bad_params = []
+        for i in check_params:
+            p = i.split('.')[0]
+            try:
+                i_ind = valid_cols.index(p.lower())
+            except ValueError:
+                bad_params.append(p)
+        if len(bad_params) > 0:
+           print('WARNING: params '+str(bad_params)+' are not found in table')
+           
+    elif check_params is not None:
+        raise ValueError('check_params must be None or dictionary')
+    
+    if isinstance(check_cols, list):
+        #checks that columns are in the table/release requested
+        bad_cols = []
+        good_cols = []
+        for i in check_cols:
+            try:
+                i_ind = valid_cols.index(i.lower())
+                good_cols.append(i_ind)
+            except ValueError:
+                bad_cols.append(i)
+        if len(bad_cols) > 0:
+            raise ValueError('Some columns not found in table: {}'.format(', '.join(bad_cols)))
+        else:
+            return table_cols_df.iloc[good_cols]
+        
+    elif check_cols is None:
+        return table_cols_df
+    
+    else:
+        raise ValueError('check_cols must be None or list type')
+
+
+def PanSTARRS_query(ra, dec, radius, table ='mean', release='dr1',
+                    columns=None, params={'nDetections.min': 0}):
+
+    baseurl="https://catalogs.mast.stsci.edu/api/v0.1/panstarrs"
+
+    cols_df = PanSTARRS_info(table=table, release=release, check_cols=columns, 
+                             check_params=params)
+    col_list = list(cols_df['name'].values)
+
+    data = {'ra':ra, 'dec':dec, 'radius':radius}
+    data = {**data, **params}
+    data['columns'] = '[{}]'.format(','.join(col_list))
+    print(data)
+
+    url = "{baseurl}/{release}/{table}.csv".format(**locals())
+    r = requests.get(url, params=data)
+    r.raise_for_status()
+    cat_text = r.text
+    cat_tab = ascii.read(cat_text)
+    cat_df = cat_tab.to_pandas()
+    return cat_df
+    
+
+            
+    
+    
