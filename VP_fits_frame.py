@@ -15,6 +15,7 @@ from astropy.io import fits
 
 import guider_observations as go
 import IFU_spectrum as ifu_spec
+import image_utils
 
 
 class VP_fits_frame():
@@ -78,15 +79,9 @@ class VP_fits_frame():
             self.num_wl = self.hdr['NAXIS1']
             self.exptime = self.hdr['EXPTIME']
             self.airmass = self.hdr['AIRMASS']
-
-            ra = self.hdr['RA'].split(':')
-            dec = self.hdr['DEC'].split(':')
-            ra_str = ra[0]+'h'+ra[1]+'m'+ra[2]+'s'
-            dec_str = dec[0]+'d'+dec[1]+'m'+dec[2]+'s'
-            im_coords = coords.SkyCoord(ra_str, dec_str, frame='icrs')
-
-            self.RA = im_coords.ra.deg
-            self.DEC = im_coords.dec.deg
+            
+            self.RA, self.DEC = image_utils.coord_hms_to_deg(self.hdr['RA'],
+                                                             self.hdr['DEC'])
 
             self.wave_start = self.hdr['CRVAL1']
             self.wave_delta = self.hdr['CDELT1']

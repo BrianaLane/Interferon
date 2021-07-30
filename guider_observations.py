@@ -39,8 +39,10 @@ class guider_observations():
             hdr_g = hdu[0].header
             date_hdr = hdr_g['DATE-OBS']
             time_hdr = hdr_g['UT']
+
             obs_dt = dt.datetime.strptime(date_hdr+'T'+time_hdr,
                                           '%Y-%m-%dT%H:%M:%S.%f')
+            
             self.guider_df.at[g, 'obs_datetime'] = obs_dt
             self.guider_df.at[g, 'exptime(s)'] = hdr_g['EXPTIME']
             hdu.close()
@@ -53,22 +55,21 @@ class guider_observations():
                 self.guider_df.iloc[guider_name]['filename']
                 hdu = fits.open(self.guider_df.iloc[guider_name]['filename'])
             else:
-                print('Guider index out of bounds')
-                return None
+                raise ValueError('Guider index out of bounds')
         elif isinstance(guider_name, str):
             if guider_name[-5::] == '.fits':
                 hdu = fits.open(guider_name)
             else:
-                print('Invalid guider filename, must be fits file or \
-                      guider index integer')
-                return None
-        else:
-            print('Need to provide guider path/filename.fits (str) or index \
-                  (int) of guider frame in guider_df')
-            return None
+                raise ValueError('Invalid guider filename, must be fits file or guider index integer')
 
-        hdr = hdu[0].header
+        else:
+            raise ValueError('Need to provide guider path/filename.fits (str) or index (int) of guider frame in guider_df')
+
         dat = hdu[0].data
+        hdr = hdu[0].header
+        ra_deg, dec_deg = image_utils.coord_hms_to_deg(hdr['RA'], hdr['DEC'])
+        hdr['RA'] = ra_deg
+        hdr['DEC'] = dec_deg
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', AstropyWarning)
             im_wcs = WCS(hdr)

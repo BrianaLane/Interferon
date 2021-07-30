@@ -35,6 +35,16 @@ from astroquery.sdss import SDSS
 from photutils import CircularAperture, aperture_photometry, CircularAnnulus
 
 
+def coord_hms_to_deg(ra, dec):
+    ra = hdr_g['RA'].split(':')
+    dec = hdr_g['DEC'].split(':')
+    ra_str = ra[0]+'h'+ra[1]+'m'+ra[2]+'s'
+    dec_str = dec[0]+'d'+dec[1]+'m'+dec[2]+'s'
+    im_coords = coords.SkyCoord(ra_str, dec_str, frame='icrs')
+
+    return im_coords.ra.deg, im_coords.dec.deg
+
+
 def plot_subframe(ax, frame, vmin=None, vmax=None, c_map='Greys'):
 
     norm = av.ImageNormalize(frame, interval=av.ZScaleInterval(),
