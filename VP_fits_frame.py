@@ -115,7 +115,7 @@ class VP_fits_frame():
                 print('WARNING: No guider frames found for', self.filename)
 
         else:
-            print('guide_obs but be a guider_observations class object')
+            raise ValueError('guide_obs must but be a guider_observations class object')
 
     # new_ext_name (int/str): name of new fits extension
     # hdr_comment (str): comment to add to header of new extension
@@ -162,7 +162,7 @@ class VP_fits_frame():
             self.build_new_extension(new_ext_name, hdr_comment)
 
         else:
-            print('Must provide sky model with shape:'
+            raise ValueError('Must provide sky model with shape:'
                   + str(np.shape(self.dat)[0]))
 
     # fib_ind (list/array)(optional, default will sum all fibers):

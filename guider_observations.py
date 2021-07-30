@@ -99,11 +99,14 @@ class guider_observations():
         hdu = fits.open(gframe_df['filename'])
         dat = hdu[0].data
         hdr = hdu[0].header
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', AstropyWarning)
+            im_wcs = WCS(hdr)
 
-        sources_df = image_utils.identify_stars(dat, hdr)
+        cat_df = image_utils.identify_stars(dat, im_wcs)
 
         hdu.close()
-        return sources_df
+        return cat_df
 
     def measure_guide_star_params(self, guide_ind, sources_df,
                                   plot_star_cutouts=False):

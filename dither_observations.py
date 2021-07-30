@@ -31,25 +31,27 @@ class dither_observation():
         self.dith_order_lis = np.ones(len(VP_frames))
         for f in range(len(self.VP_frames)):
             if not isinstance(self.VP_frames[f], vpf.VP_fits_frame):
-                sys.exit('Must provide list of VP_fits_frame objects for dither set')
+                raise ValueError('Must provide list of VP_fits_frame objects for dither set')
             else:
                 self.dith_order_lis[f] = self.VP_frames[f].dith_num
                 if dither_group_id is not None:
                     self.VP_frames[f].dither_group_id = dither_group_id
 
         self.dither_group_id = dither_group_id
-        self.dith_df = pd.read_csv(dith_file, skiprows=2)
-        self.num_dithers = int(len(self.dith_df))
 
         #check validity of the dither file provided
         dith_cols = ['dith_num', 'RA_shift', 'DEC_shift']
         dith_patterns = [1, 3, 6]
-        if self.num_dithers not in dith_patterns:
-            sys.exit('INVALID dither pattern in dith_file: must be 1, 3, or 6 dither pattern')
         try:
-            self.dith_df[dith_cols]
-        except KeyError:
-            sys.exit('INVALID dither file: requires columns '+str(dith_cols))
+            self.dith_df = pd.read_csv(dith_file, skiprows=2)
+        except FileNotFoundError:
+            raise FileNotFoundError('Dither file not found')
+
+        self.num_dithers = int(len(self.dith_df))
+        if self.num_dithers not in dith_patterns:
+            raise ValueError('INVALID dither pattern in dith_file: must be 1, 3, or 6 dither pattern')
+        if set(self.dith_df+dith_cols) != len(dith_cols):
+            raise ValueError('INVALID dither file: requires columns '+str(dith_cols))
 
         self.wave = None
         self.wave_start = None
@@ -156,8 +158,7 @@ class dither_observation():
                 print('WARNING: no guider frames found. [DITHOBS:'+str(self.dither_group_id)+'] will NOT be normalized')
 
         else:
-            print('guide_obs must be a guider_observations class object')
-            return None
+            raise ValueError('guide_obs must be a guider_observations class object')
 
     def build_common_wavesol(self):
 
