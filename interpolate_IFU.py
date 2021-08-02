@@ -168,7 +168,7 @@ class fibers_to_grid():
                     'CRPIX1': ra_ref_pix, 'CRPIX2': dec_ref_pix,
                     'CRVAL1': self.x_grid[dec_ref_pix, ra_ref_pix],
                     'CRVAL2': self.y_grid[dec_ref_pix, ra_ref_pix],
-                    'CDELT1': self.regrid_x, 'CDELT2': self.regrid_y}
+                    'CDELT1': (self.regrid_x*-1), 'CDELT2': self.regrid_y}
 
         if isinstance(wave_dict, dict):
             wcs_dict = {**wcs_dict, **wave_dict}
