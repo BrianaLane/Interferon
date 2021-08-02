@@ -21,7 +21,7 @@ from astropy.stats import sigma_clipped_stats
 from astropy.utils.exceptions import AstropyWarning
 
 
-class guider_observations():
+class guider_obs():
     def __init__(self, guider_path, guider_as_per_pix=0.51):
 
         print('BUILD guider observation: [GUIDER]')
@@ -39,27 +39,25 @@ class guider_observations():
             hdr_g = hdu[0].header
             date_hdr = hdr_g['DATE-OBS']
             time_hdr = hdr_g['UT']
-
             obs_dt = dt.datetime.strptime(date_hdr+'T'+time_hdr,
                                           '%Y-%m-%dT%H:%M:%S.%f')
-            
+
             self.guider_df.at[g, 'obs_datetime'] = obs_dt
             self.guider_df.at[g, 'exptime(s)'] = hdr_g['EXPTIME']
+
             hdu.close()
 
-    # guider_name (int/str): can be either guider index in
-    # guider_df or filename
-    def inspect_guider_frame(self, guider_name, vmin=None, vmax=None):
-        if isinstance(guider_name, int):
+    def open_guider_frame(self, guider_name, fix_hdr_wcs=True):
+        if isinstance(guider_name, (int, float)):
             if guider_name < len(self.guider_df):
-                self.guider_df.iloc[guider_name]['filename']
-                hdu = fits.open(self.guider_df.iloc[guider_name]['filename'])
+                hdu = fits.open(self.guider_df.iloc[abs(guider_name)]['filename'])
             else:
                 raise ValueError('Guider index out of bounds')
+
         elif isinstance(guider_name, str):
-            if guider_name[-5::] == '.fits':
+            try:
                 hdu = fits.open(guider_name)
-            else:
+            except ValueError:
                 raise ValueError('Invalid guider filename, must be fits file or guider index integer')
 
         else:
@@ -67,56 +65,60 @@ class guider_observations():
 
         dat = hdu[0].data
         hdr = hdu[0].header
-        ra_deg, dec_deg = image_utils.coord_hms_to_deg(hdr['RA'], hdr['DEC'])
-        hdr['RA'] = ra_deg
-        hdr['DEC'] = dec_deg
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', AstropyWarning)
-            im_wcs = WCS(hdr)
         hdu.close()
 
+        if fix_hdr_wcs:
+            # define list of header keys incorrectly defined as str in headers
+            # these need to be corrected to floats to be read by WCS
+            wcs_hdr_keys = ['CRPIX1', 'CRPIX2', 'CRVAL1', 'CRVAL2']
+            for w in wcs_hdr_keys:
+                hdr[w] = float(hdr[w])
+            hdr['CDELT1'] = -1*self.guider_ps/3600  #convert to deg
+            hdr['CDELT2'] = self.guider_ps/3600  #convert to deg
+            del hdr['CD1_1']
+            del hdr['CD1_2']
+            del hdr['CD2_1']
+            del hdr['CD2_2']
+            
+
+        return dat, hdr
+
+    # guider_name (int/str): can be either guider index in
+    # guider_df or filename
+    def inspect_guider_frame(self, guider_name, vmin=None, vmax=None):
+        dat, hdr = self.open_guider_frame(guider_name)
+        im_wcs = WCS(hdr)
         image_utils.plot_frame(dat, im_wcs, vmin=vmin, vmax=vmax)
 
-    def find_guide_stars(self, guide_ind, star_thres=10., num_bright_stars=10,
-                         star_fwhm=8.0, plot_guide_frame=False):
+    def find_guide_stars(self, guider_name, star_thres=10.,
+                         num_bright_stars=10, star_fwhm=8.0,
+                         plot_guide_frame=False):
 
-        hdu = fits.open(self.guider_df.iloc[guide_ind]['filename'])
-        g_dat = hdu[0].data
+        g_dat, g_hdr = self.open_guider_frame()
 
         sources_df = image_utils.find_stars(g_dat, star_thres=star_thres,
                                             num_bright_stars=num_bright_stars,
                                             star_fwhm=star_fwhm,
                                             plot_sources=plot_guide_frame)
 
-        hdu.close()
-
         if sources_df is None:
             return None
         else:
             return sources_df.copy()
 
-    def identify_guide_stars(self, guide_ind):
-        gframe_df = self.guider_df.iloc[guide_ind]
-        hdu = fits.open(gframe_df['filename'])
-        dat = hdu[0].data
-        hdr = hdu[0].header
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', AstropyWarning)
-            im_wcs = WCS(hdr)
+    def get_guide_stars_mag(self, guider_name):
+        dat, hdr = self.open_guider_frame(guider_name)
+        im_wcs = WCS(hdr)
 
-        cat_df = image_utils.identify_stars(dat, im_wcs)
-
-        hdu.close()
+        cat_df = image_utils.get_star_mag(dat, im_wcs)
         return cat_df
 
-    def measure_guide_star_params(self, guide_ind, sources_df,
+    def measure_guide_star_params(self, guider_name, sources_df,
                                   plot_star_cutouts=False):
 
-        hdu = fits.open(self.guider_df.iloc[guide_ind]['filename'])
-        g_dat = hdu[0].data
-
+        g_dat, g_hdr = self.open_guider_frame(guider_name)
         # divide guider image by exptime to get counts per second
-        guide_et = self.guider_df.iloc[guide_ind]['exptime(s)']
+        guide_et = float(hdr['EXPTIME'])
         g_dat_perS = g_dat/guide_et  # counts per second
 
         # remove background (approx bias) level from guider image

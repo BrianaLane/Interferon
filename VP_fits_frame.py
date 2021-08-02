@@ -13,8 +13,8 @@ import datetime as dt
 from astropy import coordinates as coords
 from astropy.io import fits
 
-import guider_observations as go
-import IFU_spectrum as ifu_spec
+import guider_observations
+import IFU_spectrum
 import image_utils
 
 
@@ -43,7 +43,7 @@ class VP_fits_frame():
 
         self.build_hdr_info()
 
-        if isinstance(guide_obs, go.guider_observations):
+        if isinstance(guide_obs, guider_observations.guider_obs):
             self.match_guider_frames(guide_obs)
         else:
             self.guider_ind = []
@@ -94,7 +94,7 @@ class VP_fits_frame():
 
     def match_guider_frames(self, guide_obs):
         
-        if isinstance(guide_obs, go.guider_observations):
+        if isinstance(guide_obs, guider_observations.guider_obs):
             
             guider_df = guide_obs.guider_df
 
@@ -110,7 +110,7 @@ class VP_fits_frame():
                 print('WARNING: No guider frames found for', self.filename)
 
         else:
-            raise ValueError('guide_obs must but be a guider_observations class object')
+            raise ValueError('guide_obs must but be a guider_observations class object '+str(type(guide_obs)))
 
     # new_ext_name (int/str): name of new fits extension
     # hdr_comment (str): comment to add to header of new extension
@@ -170,7 +170,7 @@ class VP_fits_frame():
         else:
             spec = np.sum(self.dat[fib_inds, :], axis=0)
 
-        sum_spec = ifu_spec.spectrum(spec, self.wave, z=z)
+        sum_spec = IFU_spectrum.spectrum(spec, self.wave, z=z)
 
         if plot:
             sum_spec.plot_spec(spec_units='Electrons per second')

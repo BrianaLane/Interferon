@@ -15,9 +15,9 @@ from astropy.io import fits
 from astropy.coordinates import Angle
 
 import interpolate_IFU
-import guider_observations as go
-import IFU_spectrum as ifu_spec
-import VP_fits_frame as vpf
+import guider_observations
+import IFU_spectrum
+import VP_fits_frame
 from data_cube import Cube
 
 
@@ -30,7 +30,7 @@ class dither_observation():
 
         self.dith_order_lis = np.ones(len(VP_frames))
         for f in range(len(self.VP_frames)):
-            if not isinstance(self.VP_frames[f], vpf.VP_fits_frame):
+            if not isinstance(self.VP_frames[f], VP_fits_frame.VP_fits_frame):
                 raise ValueError('Must provide list of VP_fits_frame objects for dither set')
             else:
                 self.dith_order_lis[f] = self.VP_frames[f].dith_num
@@ -50,7 +50,7 @@ class dither_observation():
         self.num_dithers = int(len(self.dith_df))
         if self.num_dithers not in dith_patterns:
             raise ValueError('INVALID dither pattern in dith_file: must be 1, 3, or 6 dither pattern')
-        if set(self.dith_df+dith_cols) != len(dith_cols):
+        if len(set(list(self.dith_df.columns.values)+dith_cols)) != len(dith_cols):
             raise ValueError('INVALID dither file: requires columns '+str(dith_cols))
 
         self.wave = None
@@ -72,7 +72,7 @@ class dither_observation():
     def normalize_dithers(self, guide_obs, star_thres=10., num_bright_stars=10,
                           star_fwhm=8.0, fwhm_lim=(0.5, 10), mag_lim=10):
 
-        if isinstance(guide_obs, go.guider_observations):
+        if isinstance(guide_obs, guider_observations.guider_obs):
   
             print(' [DITHOBS:'+str(self.dither_group_id)+'] build normalized dithers')
 
@@ -181,7 +181,7 @@ class dither_observation():
 
                 new_spec_lis = []
                 for i in range(np.shape(old_dat)[0]):
-                    spec_obj = ifu_spec.IFU_spectrum(old_dat[i], frame_wave)
+                    spec_obj = IFU_spectrum.IFU_spectrum(old_dat[i], frame_wave)
                     spec_obj.new_wave_sol(self.wave)
                     new_spec_lis.append(spec_obj.spec)
 
@@ -378,7 +378,7 @@ class dither_observation():
         else:
             spec = np.sum(self.dat[fib_inds, :], axis=0)
 
-        sum_spec = ifu_spec.IFU_spectrum(spec, self.wave, z=z)
+        sum_spec = IFU_spectrum.IFU_spectrum(spec, self.wave, z=z)
 
         if plot:
             sum_spec.plot_spec(spec_units='Electrons per second')

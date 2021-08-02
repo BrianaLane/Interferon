@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from astropy.io import fits, ascii
-from astropy.wcs import WCS
+from astropy.wcs import WCS, utils
 import astropy.visualization as av
 from astropy.modeling import models, fitting
 from astropy import units as u
@@ -31,13 +31,12 @@ with warnings.catch_warnings():
 if not sys.warnoptions:
     warnings.simplefilter("ignore")
 
-from astroquery.sdss import SDSS
 from photutils import CircularAperture, aperture_photometry, CircularAnnulus
 
 
-def coord_hms_to_deg(ra, dec):
-    ra = hdr_g['RA'].split(':')
-    dec = hdr_g['DEC'].split(':')
+def coord_hms_to_deg(RA, DEC):
+    ra = RA.split(':')
+    dec = DEC.split(':')
     ra_str = ra[0]+'h'+ra[1]+'m'+ra[2]+'s'
     dec_str = dec[0]+'d'+dec[1]+'m'+dec[2]+'s'
     im_coords = coords.SkyCoord(ra_str, dec_str, frame='icrs')
@@ -115,12 +114,21 @@ def find_stars(frame, star_thres=10., num_bright_stars=10,
 
 def get_star_mag(frame, wcs):
 
-    g_coords = coords.SkyCoord(hdr['RA'], hdr['DEC'])
+    ypix, xpix = np.shape(frame)
+    xpix_cent = xpix/2.0
+    ypix_cent = ypix/2.0
+
+    c_cent = utils.pixel_to_skycoord(xpix_cent, ypix_cent, wcs)
+    c_zero = utils.pixel_to_skycoord(0, 0, wcs)
+    rad = c_cent.dec.deg - c_zero.dec.deg
+
     params = {'nDetections.min': 0, 'gQfPerfect.min': 0.85,
              'rQfPerfect.min': 0.85,'iQfPerfect.min': 0.85,
              'gMeanPSFMag.min': 0, 'rMeanPSFMag.min': 0, 'iMeanPSFMag.min': 0}
+    
+    cat_df = PanSTARRS_query(c_cent.ra.deg, c_cent.dec.deg, rad, params=params)
 
-    return sources_df
+    return cat_df
 
 
 def measure_star_params(frame, sources_df, plot_star_cutouts=False):
