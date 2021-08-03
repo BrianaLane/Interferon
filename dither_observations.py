@@ -28,16 +28,24 @@ class dither_observation():
 
         self.VP_frames = VP_frames
 
-        self.dith_order_lis = np.ones(len(VP_frames))
+        self.obs_df = pd.DataFrame({'list_ind': np.arange(len(self.VP_frames)),
+                                    'dith_num': np.zeros(len(self.VP_frames)),
+                                    'obs_df': np.zeros(len(self.VP_frames)), 
+                                    'exptime': np.zeros(len(self.VP_frames))})
         for f in range(len(self.VP_frames)):
             if not isinstance(self.VP_frames[f], VP_fits_frame.VP_fits_frame):
                 raise ValueError('Must provide list of VP_fits_frame objects for dither set')
             else:
-                self.dith_order_lis[f] = self.VP_frames[f].dith_num
+                self.obs_df.at[f, 'list_ind'] = f
+                self.obs_df.at[f, 'dith_num'] = self.VP_frames[f].dith_num
+                self.obs_df.at[f, 'obs_df'] = self.VP_frames[f].obs_datetime
+                self.obs_df.at[f, 'exptime'] = self.VP_frames[f].exptime
                 if dither_group_id is not None:
                     self.VP_frames[f].dither_group_id = dither_group_id
-
+                    
         self.dither_group_id = dither_group_id
+        self.dith_sort_lis = self.obs_df.sort_values(by=['dith_num', 'obs_df'])['list_ind'].values
+        self.dith1_obj = self.VP_frames[self.dith_sort_lis[0]]
 
         #check validity of the dither file provided
         dith_cols = ['dith_num', 'RA_shift', 'DEC_shift']
@@ -165,10 +173,9 @@ class dither_observation():
         print(' [DITHOBS:'+str(self.dither_group_id)+'] build common wavelength solution')
 
         # establish the wavelength solution of the first dither for all dithers
-        dith1_obj = self.VP_frames[np.where(self.dith_order_lis == 1)[0][0]]
-        self.wave = dith1_obj.wave
-        self.wave_start = dith1_obj.wave_start
-        self.wave_delta = dith1_obj.wave_delta
+        self.wave = self.dith1_obj.wave
+        self.wave_start = self.dith1_obj.wave_start
+        self.wave_delta = self.dith1_obj.wave_delta
 
         for i in range(len(self.VP_frames)):
             frame_wave = self.VP_frames[i].wave
@@ -188,8 +195,8 @@ class dither_observation():
                 new_dat = np.vstack(new_spec_lis)
 
                 self.VP_frames[i].dat = new_dat
-                self.VP_frames[i].hdr['CRVAL1'] = dith1_obj.wave_start
-                self.VP_frames[i].hdr['CDELT1'] = dith1_obj.wave_delta
+                self.VP_frames[i].hdr['CRVAL1'] = self.dith1_obj.wave_start
+                self.VP_frames[i].hdr['CDELT1'] = self.dith1_obj.wave_delta
 
                 new_ext_name = 'comwave'
                 hdr_comment = 'interp. to common wavelength grid'
@@ -203,17 +210,14 @@ class dither_observation():
             
         print(' [DITHOBS:'+str(self.dither_group_id)+'] build master dither set files')
 
-        dith1_obj = self.VP_frames[np.where(self.dith_order_lis == 1)[0][0]]
-        self.field_RA = dith1_obj.RA
-        self.field_DEC = dith1_obj.DEC
+        self.field_RA = self.dith1_obj.RA
+        self.field_DEC = self.dith1_obj.DEC
 
         dat_lis = []
         err_lis = []
         fib_df_lis = []
         # shift fiber RA,DEC by dither file offsets
-        for d in self.dith_order_lis:
-            dith_obj = self.VP_frames[np.where(self.dith_order_lis == d)[0][0]]
-
+        for d in self.dith_df['dith_num'].values:
             RA_dith_shift_as = self.dith_df[self.dith_df['dith_num'] == d][
                     'RA_shift'].values[0]
 
@@ -222,17 +226,19 @@ class dither_observation():
             RA_dith_shift_deg = RA_dith_shift_as/3600
             DEC_dith_shift_deg = DEC_dith_shift_as/3600
 
-            dat_lis.append(dith_obj.dat)
-            err_lis.append(dith_obj.dat_err)
+            dith_inds = self.obs_df[self.obs_df['dith_num']==d]['list_ind']
+            for i in range(len(dith_inds)):
+                dith_obj = self.VP_frames[dith_inds[i]]
 
-            cen_ra_shift = dith_obj.fib_df['RA_offset'].values/3600
-            cen_dec_shift = dith_obj.fib_df['DEC_offset'].values/3600
+                dat_lis.append(dith_obj.dat)
+                err_lis.append(dith_obj.dat_err)
 
-            dith_obj.fib_df['RA'] = self.field_RA + cen_ra_shift + \
-                RA_dith_shift_deg
-            dith_obj.fib_df['DEC'] = self.field_DEC + cen_dec_shift + \
-                DEC_dith_shift_deg
-            fib_df_lis.append(dith_obj.fib_df)
+                cen_ra_shift = dith_obj.fib_df['RA_offset'].values/3600
+                cen_dec_shift = dith_obj.fib_df['DEC_offset'].values/3600
+
+                dith_obj.fib_df['RA'] = self.field_RA + cen_ra_shift + RA_dith_shift_deg
+                dith_obj.fib_df['DEC'] = self.field_DEC + cen_dec_shift + DEC_dith_shift_deg
+                fib_df_lis.append(dith_obj.fib_df)
 
         self.master_spec = np.vstack(dat_lis)
         self.master_err_spec = np.vstack(err_lis)
@@ -311,8 +317,7 @@ class dither_observation():
         # find mean of header values for combined dithers
         wcs_hdr = self.cube_wcs.to_header()
 
-        dith1_obj = self.VP_frames[np.where(self.dith_order_lis == 1)[0][0]]
-        dith1_hdr = dith1_obj.hdr
+        dith1_hdr = self.dith1_obj.hdr
 
         wcs_hdr['NUMDITH'] = (len(self.VP_frames),
                               'Number of combined dithers')
@@ -325,19 +330,20 @@ class dither_observation():
         wcs_hdr['RA'] = (self.field_RA, 'RA of object for dither 1 (deg)')
         wcs_hdr['DEC'] = (self.field_DEC, 'DEC of object for dither 1 (deg)')
         wcs_hdr['EQUINOX'] = dith1_hdr['EQUINOX']
-        wcs_hdr['OBJECT'] = dith1_obj.object
-        wcs_hdr['DATE-OBS'] = (dith1_obj.obs_datetime.strftime('%Y%m%dT%H%M%S'), 'Obs date for dither 1')
-        wcs_hdr['EXPTIME'] = (dith1_obj.exptime,
+        wcs_hdr['OBJECT'] = self.dith1_obj.object
+        wcs_hdr['DATE-OBS'] = (self.dith1_obj.obs_datetime.strftime('%Y%m%dT%H%M%S'), 'Obs date for dither 1')
+        wcs_hdr['EXPTIME'] = (self.dith1_obj.exptime,
                               'Average dither exposure time')
-        wcs_hdr['FILEXT'] = (dith1_obj.fits_ext, 'fits extention used')
+        wcs_hdr['FILEXT'] = (self.dith1_obj.fits_ext, 'fits extention used')
 
-        for d in self.dith_order_lis:
-            dith_obj = self.VP_frames[np.where(self.dith_order_lis == d)[0][0]]
+        for d in self.dith_sort_lis:
+            dith_obj = self.VP_frames[d]
             wcs_hdr['AIRMAS'+str(int(d))] = dith_obj.airmass
-            wcs_hdr['DITHNOR'+str(int(d))] = dith_obj.dithnorm
-            wcs_hdr['SEEING'+str(int(d))] = dith_obj.seeing
-            wcs_hdr['DITHFIL'+str(int(d))] = dith_obj.filename
+            wcs_hdr['DTHNOR'+str(int(d))] = dith_obj.dithnorm
+            wcs_hdr['SEENG'+str(int(d))] = dith_obj.seeing
+            wcs_hdr['DTHFIL'+str(int(d))] = dith_obj.filename
             wcs_hdr['FILEXT'+str(int(d))] = dith_obj.fits_ext
+            wcs_hdr['EXPTIM'+str(int(d))] = dith_obj.exptime
 
         wcs_hdr['COMMENT'] = 'DATA CUBE built from DITHFIL# files'
         wcs_hdr['COMMENT'] = 'using the fits extension FILEXT'
@@ -356,7 +362,7 @@ class dither_observation():
         hdu_new.writeto(outname, overwrite=True)
 
         hdu_err = fits.open(outname)
-        hdu_err[0].header['FILEXT'] = dith1_obj.fits_err_ext
+        hdu_err[0].header['FILEXT'] = self.dith1_obj.fits_err_ext
         hdu_err[0].header['COMMENT'] = 'ERROR DATA CUBE built from DITHFIL#'
         hdu_err[0].header['COMMENT'] = 'files using the fits error extension FILEXT'
         fits_cube_err = np.swapaxes(np.swapaxes(self.data_err_cube, 2, 0), 1, 2)
