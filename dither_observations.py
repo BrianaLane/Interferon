@@ -28,7 +28,7 @@ class dither_observation():
 
         self.VP_frames = VP_frames
 
-        self.obs_df = pd.DataFrame({'list_ind': np.arange(len(self.VP_frames)),
+        obs_df = pd.DataFrame({'list_ind': np.arange(len(self.VP_frames)),
                                     'dith_num': np.zeros(len(self.VP_frames)),
                                     'obs_df': np.zeros(len(self.VP_frames)), 
                                     'exptime': np.zeros(len(self.VP_frames))})
@@ -36,16 +36,16 @@ class dither_observation():
             if not isinstance(self.VP_frames[f], VP_fits_frame.VP_fits_frame):
                 raise ValueError('Must provide list of VP_fits_frame objects for dither set')
             else:
-                self.obs_df.at[f, 'list_ind'] = f
-                self.obs_df.at[f, 'dith_num'] = self.VP_frames[f].dith_num
-                self.obs_df.at[f, 'obs_df'] = self.VP_frames[f].obs_datetime
-                self.obs_df.at[f, 'exptime'] = self.VP_frames[f].exptime
+                obs_df.at[f, 'list_ind'] = f
+                obs_df.at[f, 'dith_num'] = self.VP_frames[f].dith_num
+                obs_df.at[f, 'obs_dt'] = self.VP_frames[f].obs_datetime
+                obs_df.at[f, 'exptime'] = self.VP_frames[f].exptime
                 if dither_group_id is not None:
                     self.VP_frames[f].dither_group_id = dither_group_id
                     
+        self.obs_df = obs_df.sort_values(by=['dith_num', 'obs_dt'])
+        self.dith1_obj = self.VP_frames[self.obs_df['list_ind'].values[0]]
         self.dither_group_id = dither_group_id
-        self.dith_sort_lis = self.obs_df.sort_values(by=['dith_num', 'obs_df'])['list_ind'].values
-        self.dith1_obj = self.VP_frames[self.dith_sort_lis[0]]
 
         #check validity of the dither file provided
         dith_cols = ['dith_num', 'RA_shift', 'DEC_shift']
@@ -226,7 +226,7 @@ class dither_observation():
             RA_dith_shift_deg = RA_dith_shift_as/3600
             DEC_dith_shift_deg = DEC_dith_shift_as/3600
 
-            dith_inds = self.obs_df[self.obs_df['dith_num']==d]['list_ind']
+            dith_inds = self.obs_df[self.obs_df['dith_num']==d]['list_ind'].values
             for i in range(len(dith_inds)):
                 dith_obj = self.VP_frames[dith_inds[i]]
 
@@ -336,7 +336,8 @@ class dither_observation():
                               'Average dither exposure time')
         wcs_hdr['FILEXT'] = (self.dith1_obj.fits_ext, 'fits extention used')
 
-        for d in self.dith_sort_lis:
+        dith_sort_values = self.obs_df['list_ind'].values
+        for d in dith_sort_values:
             dith_obj = self.VP_frames[d]
             wcs_hdr['AIRMAS'+str(int(d))] = dith_obj.airmass
             wcs_hdr['DTHNOR'+str(int(d))] = dith_obj.dithnorm
