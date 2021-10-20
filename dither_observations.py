@@ -27,27 +27,10 @@ class dither_observation():
                  dith_file='VP_config/dith_vp_6subdither.csv'):
 
         self.VP_frames = VP_frames
+        if len(self.VP_frames) == 0:
+            raise ValueError('VP_frames is an empty list')
 
-        obs_df = pd.DataFrame({'list_ind': np.arange(len(self.VP_frames)),
-                                    'dith_num': np.zeros(len(self.VP_frames)),
-                                    'obs_df': np.zeros(len(self.VP_frames)), 
-                                    'exptime': np.zeros(len(self.VP_frames))})
-        for f in range(len(self.VP_frames)):
-            if not isinstance(self.VP_frames[f], VP_fits_frame.VP_fits_frame):
-                raise ValueError('Must provide list of VP_fits_frame objects for dither set')
-            else:
-                obs_df.at[f, 'list_ind'] = f
-                obs_df.at[f, 'dith_num'] = self.VP_frames[f].dith_num
-                obs_df.at[f, 'obs_dt'] = self.VP_frames[f].obs_datetime
-                obs_df.at[f, 'exptime'] = self.VP_frames[f].exptime
-                if dither_group_id is not None:
-                    self.VP_frames[f].dither_group_id = dither_group_id
-                    
-        self.obs_df = obs_df.sort_values(by=['dith_num', 'obs_dt'])
-        self.dith1_obj = self.VP_frames[self.obs_df['list_ind'].values[0]]
-        self.dither_group_id = dither_group_id
-
-        #check validity of the dither file provided
+        # check validity of the dither file provided
         dith_cols = ['dith_num', 'RA_shift', 'DEC_shift']
         dith_patterns = [1, 3, 6]
         try:
@@ -60,6 +43,38 @@ class dither_observation():
             raise ValueError('INVALID dither pattern in dith_file: must be 1, 3, or 6 dither pattern')
         if len(set(list(self.dith_df.columns.values)+dith_cols)) != len(dith_cols):
             raise ValueError('INVALID dither file: requires columns '+str(dith_cols))
+
+        # build information about dither frames in set
+        obs_df = pd.DataFrame({'list_ind': np.arange(len(self.VP_frames)),
+                                    'dith_num': np.zeros(len(self.VP_frames)),
+                                    'obs_dt': np.zeros(len(self.VP_frames)), 
+                                    'exptime': np.zeros(len(self.VP_frames)),
+                                    'airmass': np.zeros(len(self.VP_frames)),
+                                    'grating': None})
+
+        for f in range(len(self.VP_frames)):
+            if not isinstance(self.VP_frames[f], VP_fits_frame.VP_frame):
+                raise ValueError('Must provide list of VP_frame objects for dither set')
+            else:
+                obs_df.at[f, 'list_ind'] = f
+                obs_df.at[f, 'dith_num'] = self.VP_frames[f].dith_num
+                obs_df.at[f, 'obs_dt'] = self.VP_frames[f].obs_datetime
+                obs_df.at[f, 'exptime'] = self.VP_frames[f].exptime
+                obs_df.at[f, 'airmass'] = self.VP_frames[f].airmass
+                obs_df.at[f, 'grating'] = self.VP_frames[f].grating
+                if dither_group_id is not None:
+                    self.VP_frames[f].dither_group_id = dither_group_id
+
+        # check validity of set of VP_frames by checking grating setting
+        # does not check object name in case users don't use consistent naming
+        dith_set_gratings = set(list(obs_df['grating'].values))
+        if len(dith_set_gratings) > 1:
+            raise ValueError('All VP_frames combined in a dither set must use same VP_grating'
+                             + ' Found:'+str(dith_set_gratings))
+
+        self.obs_df = obs_df.sort_values(by=['dith_num', 'obs_dt'])
+        self.dith1_obj = self.VP_frames[self.obs_df['list_ind'].values[0]]
+        self.dither_group_id = dither_group_id
 
         self.wave = None
         self.wave_start = None
@@ -321,6 +336,7 @@ class dither_observation():
 
         wcs_hdr['NUMDITH'] = (len(self.VP_frames),
                               'Number of combined dithers')
+        wcs_hdr['UNITS'] = ('e-/s', 'flux units')
         wcs_hdr['REGRID'] = (self.interp_class.regrid_size,
                              'Regrid size set for interpolation (deg)')
         wcs_hdr['KERNSIG'] = (self.interp_class.kern_sig,
@@ -334,12 +350,18 @@ class dither_observation():
         wcs_hdr['DATE-OBS'] = (self.dith1_obj.obs_datetime.strftime('%Y%m%dT%H%M%S'), 'Obs date for dither 1')
         wcs_hdr['EXPTIME'] = (self.dith1_obj.exptime,
                               'Average dither exposure time')
+        wcs_hdr['GRAT'] = (self.dith1_obj.grating, 'VP grating')
+        wcs_hdr['GRATRES'] = (self.dith1_obj.grat_res, 'resolution of VP grating (A)')
         wcs_hdr['FILEXT'] = (self.dith1_obj.fits_ext, 'fits extention used')
+        
+        wcs_hdr['FLUXCAL'] = ('False', 'True if flux calibrated')
+        wcs_hdr['CALFILE'] = ('None', 'sens. curve used for flux calibration')
 
         dith_sort_values = self.obs_df['list_ind'].values
         for d in dith_sort_values:
             dith_obj = self.VP_frames[d]
             wcs_hdr['AIRMAS'+str(int(d))] = dith_obj.airmass
+            wcs_hdr['AM_CORR'+str(int(d))] = dith_obj.am_corr
             wcs_hdr['DTHNOR'+str(int(d))] = dith_obj.dithnorm
             wcs_hdr['SEENG'+str(int(d))] = dith_obj.seeing
             wcs_hdr['DTHFIL'+str(int(d))] = dith_obj.filename
@@ -371,8 +393,8 @@ class dither_observation():
         outname_err = outname.split('.fits')[0]+'_err.fits'
         hdu_err.writeto(outname_err, overwrite=True)
         hdu_err.close()
-        
-        cube_obj = Cube(cube_file=outname, err_cube_file=outname_err)
+
+        cube_obj = Cube(cube_file=outname)
         return cube_obj
 
     # fib_ind (list/array)(optional,

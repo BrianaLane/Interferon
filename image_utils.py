@@ -12,6 +12,7 @@ import json
 import requests
 import matplotlib.pyplot as plt
 import pandas as pd
+import difflib
 
 from astropy.io import fits, ascii
 from astropy.wcs import WCS, utils
@@ -25,8 +26,8 @@ from astropy.utils.exceptions import AstropyWarning
 import warnings
 
 with warnings.catch_warnings():
-   warnings.filterwarnings("ignore")
-   from photutils import DAOStarFinder
+    warnings.filterwarnings("ignore")
+    from photutils import DAOStarFinder
 
 if not sys.warnoptions:
     warnings.simplefilter("ignore")
@@ -42,6 +43,18 @@ def coord_hms_to_deg(RA, DEC):
     im_coords = coords.SkyCoord(ra_str, dec_str, frame='icrs')
 
     return im_coords.ra.deg, im_coords.dec.deg
+
+
+def match_obj_to_lis(obj, obj_lis):
+    match_lis = difflib.get_close_matches(obj, obj_lis, 1, cutoff=0.8)
+    
+    if len(match_lis) > 0:
+        best_match = match_lis[0]
+        score = difflib.SequenceMatcher(None, obj, best_match).ratio()
+        return best_match, score
+
+    else:
+        return match_lis, 0
 
 
 def plot_subframe(ax, frame, vmin=None, vmax=None, c_map='Greys'):
@@ -61,20 +74,30 @@ def plot_subframe(ax, frame, vmin=None, vmax=None, c_map='Greys'):
 
 
 def plot_frame(frame, wcs=None, vmin=None, vmax=None, c_map='Greys',
-               save=False, outfile=None):
-    
-    if wcs.naxis==3:
-        wcs = WCS(wcs.to_header(), naxis=2)
+               save=False, outfile=None, star_df=None):
 
     fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_subplot(1, 1, 1, projection=wcs)
+    
+    if wcs is None:
+        ax = fig.add_subplot(1, 1, 1)
+    
+    elif wcs.naxis == 3:
+        wcs = WCS(wcs.to_header(), naxis=2)
+        ax = fig.add_subplot(1, 1, 1, projection=wcs)
 
     plot_subframe(ax, frame, vmin=vmin, vmax=vmax, c_map=c_map)
+
+    if isinstance(star_df, pd.core.frame.DataFrame):
+        ax.errorbar(star_df['xcentroid_fit'].values,
+                    star_df['ycentroid_fit'].values,
+                    xerr=star_df['fwhm(pixels'].values/2.0,
+                    yerr=star_df['fwhm(pixels'].values/2.0,
+                    color='red')
 
     if save:
         try:
             plt.savefig(outfile)
-        except:
+        except ValueError:
             print('Invaild outfile path to save plot')
 
     plt.show()
@@ -89,7 +112,7 @@ def find_stars(frame, star_thres=10., num_bright_stars=10,
                             brightest=num_bright_stars)
 
     sources = daofind(frame)
-    
+
     if sources is None:
         return None
 
@@ -97,7 +120,7 @@ def find_stars(frame, star_thres=10., num_bright_stars=10,
         for col in sources.colnames:
             sources[col].info.format = '%.8g'  # for consistent table output
         sources_df = sources.to_pandas()
-    
+
         if plot_sources:
             fig, ax = plt.subplots(1, 1, figsize=(10, 10))
             plot_subframe(ax, frame)
@@ -105,30 +128,11 @@ def find_stars(frame, star_thres=10., num_bright_stars=10,
                 aperture = CircularAperture((sources_df.iloc[i]['xcentroid'],
                                              sources_df.iloc[i]['ycentroid']),
                                             r=star_fwhm)
-    
+
                 aperture.plot(color='red', lw=2.5)
             plt.show()
-    
+
         return sources_df.copy()
-
-
-def get_star_mag(frame, wcs):
-
-    ypix, xpix = np.shape(frame)
-    xpix_cent = xpix/2.0
-    ypix_cent = ypix/2.0
-
-    c_cent = utils.pixel_to_skycoord(xpix_cent, ypix_cent, wcs)
-    c_zero = utils.pixel_to_skycoord(0, 0, wcs)
-    rad = c_cent.dec.deg - c_zero.dec.deg
-
-    params = {'nDetections.min': 0, 'gQfPerfect.min': 0.85,
-             'rQfPerfect.min': 0.85,'iQfPerfect.min': 0.85,
-             'gMeanPSFMag.min': 0, 'rMeanPSFMag.min': 0, 'iMeanPSFMag.min': 0}
-    
-    cat_df = PanSTARRS_query(c_cent.ra.deg, c_cent.dec.deg, rad, params=params)
-
-    return cat_df
 
 
 def measure_star_params(frame, sources_df, plot_star_cutouts=False):
@@ -197,23 +201,70 @@ def measure_star_params(frame, sources_df, plot_star_cutouts=False):
     return sources_df.copy()
 
 
-def PanSTARRS_info(table='mean', release='dr1',check_cols=None,
+def fit_moffat_psf(frame, plot=False):
+
+    y_grid, x_grid = np.mgrid[:np.shape(frame)[0], :np.shape(frame)[1]]
+
+    sources_df = find_stars(frame, star_thres=10., num_bright_stars=1,
+                            star_fwhm=8.0)
+
+    if sources_df is None:
+        raise ValueError('No stars found in frame to fit')
+
+    mof = models.Moffat2D(amplitude=sources_df['peak'].values[0],
+                          x_0=sources_df['xcentroid'].values[0],
+                          y_0=sources_df['ycentroid'].values[0],
+                          gamma=1.0, alpha=1.0)
+
+    mfit = fitting.LevMarLSQFitter()
+    fit_m = mfit(mof, x_grid, y_grid, frame)
+
+    if plot:
+        sources_df = measure_star_params(frame, sources_df.copy())
+        mod_fit_frame = fit_m(x_grid, y_grid)
+        plot_frame(mod_fit_frame, star_df=sources_df)
+
+    mof_mod = fit_m(x_grid, y_grid)
+
+    return mof_mod
+
+
+def get_star_mag(frame, wcs):
+
+    ypix, xpix = np.shape(frame)
+    xpix_cent = xpix/2.0
+    ypix_cent = ypix/2.0
+
+    c_cent = utils.pixel_to_skycoord(xpix_cent, ypix_cent, wcs)
+    c_zero = utils.pixel_to_skycoord(0, 0, wcs)
+    rad = c_cent.dec.deg - c_zero.dec.deg
+
+    params = {'nDetections.min': 0, 'gQfPerfect.min': 0.85,
+              'rQfPerfect.min': 0.85, 'iQfPerfect.min': 0.85,
+              'gMeanPSFMag.min': 0, 'rMeanPSFMag.min': 0, 'iMeanPSFMag.min': 0}
+
+    cat_df = PanSTARRS_query(c_cent.ra.deg, c_cent.dec.deg, rad, params=params)
+
+    return cat_df
+
+
+def PanSTARRS_info(table='mean', release='dr1', check_cols=None,
                    check_params=None):
 
-    baseurl="https://catalogs.mast.stsci.edu/api/v0.1/panstarrs"
-    
-    #checks if the table and release params are valid
-    #raises value error if not
+    baseurl = "https://catalogs.mast.stsci.edu/api/v0.1/panstarrs"
+
+    # checks if the table and release params are valid
+    # raises value error if not
     releaselist = ("dr1", "dr2")
-    if release not in ("dr1","dr2"):
+    if release not in ("dr1", "dr2"):
         raise ValueError("Bad value for release (must be one of {})".format(', '.join(releaselist)))
-    if release=="dr1":
+    if release == "dr1":
         tablelist = ("mean", "stack")
     else:
         tablelist = ("mean", "stack", "detection")
     if table not in tablelist:
         raise ValueError("Bad value for table (for {} must be one of {})".format(release, ", ".join(tablelist)))
-    
+
     meta_url = "{baseurl}/{release}/{table}/metadata".format(**locals())
     r_meta = requests.get(meta_url)
     r_meta.raise_for_status()
@@ -222,7 +273,7 @@ def PanSTARRS_info(table='mean', release='dr1',check_cols=None,
 
     table_cols = table_cols_df['name'].values
     valid_cols = [c.lower() for c in list(table_cols)]
-    
+
     if isinstance(check_params, dict):
         bad_params = []
         for i in check_params:
@@ -233,12 +284,12 @@ def PanSTARRS_info(table='mean', release='dr1',check_cols=None,
                 bad_params.append(p)
         if len(bad_params) > 0:
            print('WARNING: params '+str(bad_params)+' are not found in table')
-           
+
     elif check_params is not None:
         raise ValueError('check_params must be None or dictionary')
-    
+
     if isinstance(check_cols, list):
-        #checks that columns are in the table/release requested
+        # checks that columns are in the table/release requested
         bad_cols = []
         good_cols = []
         for i in check_cols:
@@ -251,24 +302,24 @@ def PanSTARRS_info(table='mean', release='dr1',check_cols=None,
             raise ValueError('Some columns not found in table: {}'.format(', '.join(bad_cols)))
         else:
             return table_cols_df.iloc[good_cols]
-        
+
     elif check_cols is None:
         return table_cols_df
-    
+
     else:
         raise ValueError('check_cols must be None or list type')
 
 
-def PanSTARRS_query(ra, dec, radius, table ='mean', release='dr1',
+def PanSTARRS_query(ra, dec, radius, table='mean', release='dr1',
                     columns=None, params={'nDetections.min': 0}):
 
-    baseurl="https://catalogs.mast.stsci.edu/api/v0.1/panstarrs"
+    baseurl = "https://catalogs.mast.stsci.edu/api/v0.1/panstarrs"
 
-    cols_df = PanSTARRS_info(table=table, release=release, check_cols=columns, 
+    cols_df = PanSTARRS_info(table=table, release=release, check_cols=columns,
                              check_params=params)
     col_list = list(cols_df['name'].values)
 
-    data = {'ra':ra, 'dec':dec, 'radius':radius}
+    data = {'ra': ra, 'dec': dec, 'radius': radius}
     data = {**data, **params}
     data['columns'] = '[{}]'.format(','.join(col_list))
     print(data)
@@ -280,8 +331,3 @@ def PanSTARRS_query(ra, dec, radius, table ='mean', release='dr1',
     cat_tab = ascii.read(cat_text)
     cat_df = cat_tab.to_pandas()
     return cat_df
-    
-
-            
-    
-    
